@@ -1,0 +1,840 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ハーネスプロンプトビルダー</title>
+<style>
+  :root {
+    --bg: #f6f5f1;
+    --panel: #ffffff;
+    --text: #1d1d1b;
+    --muted: #6b6a65;
+    --line: #dedcd4;
+    --accent: #2f5d50;
+    --accent-soft: #e3ece8;
+    --warn: #9a4a12;
+    --code-bg: #fbfaf7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #161716;
+      --panel: #1f201f;
+      --text: #ecebe6;
+      --muted: #a09f98;
+      --line: #34352f;
+      --accent: #7fbfa8;
+      --accent-soft: #24332e;
+      --warn: #e0a070;
+      --code-bg: #1a1b1a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+  }
+  header { padding: 24px 16px 8px; max-width: 1280px; margin: 0 auto; }
+  header h1 { margin: 0; font-size: 22px; letter-spacing: 0.02em; }
+  header p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 20px;
+    padding: 16px;
+    max-width: 1280px;
+    margin: 0 auto;
+  }
+  @media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+
+  fieldset {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px 16px 16px;
+    margin: 0 0 14px;
+    min-width: 0;
+  }
+  legend { font-weight: 700; padding: 0 6px; font-size: 14px; }
+  .hint { color: var(--muted); font-size: 12px; margin: 0 0 8px; }
+  .options { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+  .options.column { flex-direction: column; gap: 4px; }
+  label.opt { display: inline-flex; align-items: flex-start; gap: 6px; cursor: pointer; font-size: 14px; }
+  label.opt input { margin-top: 4px; accent-color: var(--accent); }
+  select, textarea {
+    width: 100%;
+    font: inherit;
+    color: var(--text);
+    background: var(--code-bg);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 8px;
+  }
+  textarea { resize: vertical; min-height: 70px; }
+  .row { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+  .row > label { font-size: 13px; color: var(--muted); }
+  input[type="range"] { width: 100%; accent-color: var(--accent); }
+  .level-desc { font-size: 13px; background: var(--accent-soft); border-radius: 6px; padding: 6px 10px; margin-top: 6px; }
+  .mini-btns { display: flex; gap: 6px; margin-bottom: 8px; }
+  .mini-btns button { font-size: 12px; padding: 2px 8px; }
+
+  /* 説明付きの選択肢：チェックボックスと「説明」を横並びにし、開くと下に詳細が出る */
+  .options.detailed { flex-direction: column; gap: 6px; }
+  .choice { border-bottom: 1px dashed var(--line); padding-bottom: 6px; }
+  .choice:last-child { border-bottom: none; padding-bottom: 0; }
+  .choice-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+  .detail-toggle {
+    flex-shrink: 0;
+    font-size: 12px;
+    color: var(--accent);
+    padding: 1px 10px;
+    border-radius: 999px;
+  }
+  .detail-toggle::after { content: " ▾"; }
+  .detail-toggle[aria-expanded="true"]::after { content: " ▴"; }
+  .detail-body {
+    margin-top: 6px;
+    font-size: 13px;
+    line-height: 1.7;
+    white-space: pre-line;
+    background: var(--accent-soft);
+    border-radius: 6px;
+    padding: 8px 10px;
+  }
+
+  .preview {
+    position: sticky;
+    top: 16px;
+    align-self: start;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 32px);
+  }
+  @media (max-width: 900px) { .preview { position: static; max-height: none; } }
+  .preview-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  .preview-head h2 { margin: 0; font-size: 15px; }
+  .count { color: var(--muted); font-size: 12px; }
+  pre#output {
+    margin: 0;
+    background: var(--code-bg);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 12px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12.5px;
+    overflow: auto;
+    flex: 1;
+    min-height: 300px;
+  }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    font: inherit;
+    font-size: 13px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--text);
+    cursor: pointer;
+  }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); font-weight: 700; }
+  button:hover { filter: brightness(0.96); }
+  .warning { color: var(--warn); font-size: 12px; margin: 8px 0 0; }
+  .toast { color: var(--accent); font-size: 12px; min-height: 18px; margin-top: 6px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ハーネスプロンプトビルダー</h1>
+</header>
+
+<div class="layout">
+  <form id="builder" autocomplete="off">
+    <fieldset>
+      <legend>1. 任せたい仕事</legend>
+      <div class="row">
+        <label for="jobPreset">テンプレート</label>
+        <select id="jobPreset" name="jobPreset"></select>
+      </div>
+      <textarea id="job" name="job" rows="3" placeholder="AIに任せたい仕事を書く"></textarea>
+    </fieldset>
+
+    <fieldset>
+      <legend>2. あなたのレベル（説明の詳しさ）</legend>
+      <p class="hint">「例を見る」で、同じ用語（MCP）がレベルごとにどう説明されるかを確認できます。</p>
+      <div class="options detailed" id="levelOptions"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>3. 使用予定のツール</legend>
+      <div class="options" id="toolOptions"></div>
+      <div class="options" style="margin-top:8px">
+        <label class="opt"><input type="checkbox" name="letAiChooseTools" checked>この中から必要なものだけAIに選ばせる</label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>4. 役割設計</legend>
+      <div class="row">
+        <label for="roleCount">役割の数</label>
+        <select id="roleCount" name="roleCount">
+          <option value="1">1役（1人で兼任）</option>
+          <option value="2">2役</option>
+          <option value="3" selected>3役</option>
+        </select>
+        <label for="rolePreset">役割の型</label>
+        <select id="rolePreset" name="rolePreset"></select>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>5. 必ず設計するもの</legend>
+      <div class="mini-btns" data-group="designItems"></div>
+      <div class="options column" id="designItemOptions"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>6. 作成するファイル</legend>
+      <div class="mini-btns" data-group="files"></div>
+      <p class="hint">下の3つ（architecture / coding-standards / test-plan）はシステム開発向けです。必要に応じてチェックしてください。</p>
+      <div class="options detailed" id="fileOptions"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>7. tasks.json の項目</legend>
+      <div class="options detailed" id="taskFieldOptions"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>8. 検品で認める証拠</legend>
+      <div class="options" id="evidenceOptions"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>9. 安全設計</legend>
+      <p class="hint">人間の承認を必須にする操作</p>
+      <div class="options" id="approvalOptions"></div>
+      <p class="hint" style="margin-top:12px">AIに許す自動化レベルの上限</p>
+      <input type="range" id="autoLevelMax" name="autoLevelMax" min="0" max="4" step="1" value="2">
+      <div class="level-desc" id="autoLevelDesc"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>10. 改善の蓄積方法</legend>
+      <p class="hint">「比較で改善」「教訓ファイル」は Harness² の考え方を手作業向けにしたものです。</p>
+      <div class="options column" id="improvementOptions"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>11. 出力内容と進め方</legend>
+      <div class="mini-btns" data-group="outputSections"></div>
+      <div class="options column" id="outputSectionOptions"></div>
+      <p class="hint" style="margin-top:12px">進め方</p>
+      <div class="options column" id="runModeOptions"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>12. 追加の条件（任意）</legend>
+      <textarea id="extraRules" name="extraRules" rows="3" placeholder="例：社内用語集は docs/glossary.md を正とする / 納期は毎週金曜"></textarea>
+    </fieldset>
+  </form>
+
+  <section class="preview" aria-label="生成されたプロンプト">
+    <div class="preview-head">
+      <h2>生成されたプロンプト <span class="count" id="charCount"></span></h2>
+      <div class="actions">
+        <button type="button" class="primary" id="copyBtn">コピー</button>
+        <button type="button" id="downloadBtn">.md で保存</button>
+        <button type="button" id="resetBtn">初期設定に戻す</button>
+      </div>
+    </div>
+    <pre id="output"></pre>
+    <div class="toast" id="toast" role="status"></div>
+  </section>
+</div>
+
+<script>
+"use strict";
+
+/* ===== 選択肢の定義（ここを編集すれば選択肢を増減できる） ===== */
+
+// group はテンプレートのドロップダウン内の見出し（optgroup）になる
+const JOB_PRESETS = [
+  { id: "article",  group: "コンテンツ・業務", label: "記事制作",     text: "生成AI初心者向けに、最新情報を使った1万文字の記事を継続的に制作したい。" },
+  { id: "lp",       group: "コンテンツ・業務", label: "LP改善",       text: "自社商品のLPを、スマホで読みやすく、CTAボタンまで迷わず進める構成に改善したい。" },
+  { id: "x-ops",    group: "コンテンツ・業務", label: "X運用",        text: "毎朝、生成AIの重要ニュースを調査し、根拠付きのX投稿案を承認待ちの下書きとして作りたい。" },
+  { id: "research", group: "コンテンツ・業務", label: "調査レポート", text: "指定したテーマについて、一次情報に基づく調査レポートを作りたい。" },
+
+  { id: "system-new",  group: "SE・システム開発", label: "新規システム開発（要件定義〜リリース準備）",
+    text: "新規の業務システムを、要件定義・設計・実装・テスト・リリース準備まで段階的に開発したい。各工程の成果物（要件定義書、設計書、コード、テスト結果）を残したい。" },
+  { id: "feature",     group: "SE・システム開発", label: "既存システムへの機能追加",
+    text: "既存のWebアプリに新機能を追加し、テストとレビューを通した状態でリリース準備まで進めたい。" },
+  { id: "bugfix",      group: "SE・システム開発", label: "不具合調査・修正",
+    text: "報告された不具合について、再現手順の確立、原因調査、修正、再発防止のテスト追加までを行いたい。" },
+  { id: "refactor",    group: "SE・システム開発", label: "リファクタリング",
+    text: "既存システムの動作を変えずに、読みやすさと保守性を上げるリファクタリングを段階的に進めたい。" },
+  { id: "design-doc",  group: "SE・システム開発", label: "設計書作成（基本設計・詳細設計）",
+    text: "要件をもとに、基本設計書と詳細設計書（画面、API、DB、処理フロー）を作成したい。" },
+  { id: "test",        group: "SE・システム開発", label: "テスト設計・自動テスト",
+    text: "既存システムのテスト計画を立て、テストケースを作成し、自動テストの実装と実行結果の記録まで行いたい。" },
+  { id: "infra",       group: "SE・システム開発", label: "インフラ構築（IaC）",
+    text: "クラウド上の環境をIaC（TerraformやCDKなど）で構築し、レビューと差分確認を経て適用できる状態にしたい。" },
+  { id: "reverse-doc", group: "SE・システム開発", label: "既存コードの解析・ドキュメント化",
+    text: "既存システムのソースコードを解析し、構成図、処理フロー、仕様書などのドキュメントを作成したい。" },
+  { id: "code-review", group: "SE・システム開発", label: "コードレビュー",
+    text: "プルリクエストの変更内容を、可読性・設計・セキュリティ・テストの観点でレビューし、指摘を重要度付きでまとめたい。" },
+
+  { id: "custom", group: "その他", label: "自由入力", text: "" },
+];
+
+// description は「例を見る」で開く内容。同じ用語（MCP）の説明の違いでレベル差を見せる
+const LEVELS = [
+  { id: "beginner", label: "初心者",
+    text: "私はAI初心者です。\n専門用語を使う場合は、中学生でもわかる説明を付けてください。",
+    description: "向いている人：AIツールをほとんど使ったことがない、ターミナルを触らない\n\n「MCP」の説明の例：\nMCPは、AIと外部のサービスをつなぐ「延長コード」のようなものです。これをつなぐと、AIがGoogleドライブの資料を読んだり、カレンダーを確認したりできるようになります。" },
+  { id: "intermediate", label: "中級者",
+    text: "私はAIツールを日常的に使っています。\n専門用語は使って構いませんが、重要な概念には一言説明を付けてください。",
+    description: "向いている人：ChatGPTやClaudeを毎日使っている、設定ファイルを少し編集できる\n\n「MCP」の説明の例：\nMCP（AIと外部ツールをつなぐ共通規格）でGitHubとGoogleドライブに接続します。使わないサーバーまでつなぐとAIが迷うので、必要な分だけに絞ってください。" },
+  { id: "expert", label: "エンジニア",
+    text: "私はエンジニアです。\n専門用語の説明は不要です。簡潔に、実装できる具体性で書いてください。",
+    description: "向いている人：開発業務をしている、Claude CodeやCodexの設定を自分で書ける\n\n「MCP」の説明の例：\nMCP: GitHub（read-only）、Postgres（staging DBのみ）。.mcp.json に定義し、書き込み系ツールは permissions で ask に設定。" },
+];
+
+const TOOLS = ["Claude", "Claude Code", "Claude Cowork", "Cursor", "SuperGrok", "Grok Bot", "Codex"];
+
+const ROLE_PRESETS = [
+  { id: "general",  label: "計画・実行・評価", byCount: { 1: ["担当役（計画・実行・評価を兼任）"], 2: ["実行役", "評価役"], 3: ["計画役", "実行役", "評価役"] } },
+  { id: "writing",  label: "調査・執筆・編集", byCount: { 1: ["執筆役（調査・編集を兼任）"],       2: ["執筆役", "編集役"], 3: ["調査役", "執筆役", "編集役"] } },
+  { id: "building", label: "設計・実装・確認", byCount: { 1: ["実装役（設計・確認を兼任）"],       2: ["実装役", "確認役"], 3: ["設計役", "実装役", "確認役"] } },
+];
+
+const DESIGN_ITEMS = [
+  "最終的な完成品", "対象者", "AIが最初に読むべき資料", "正しい情報源として扱うファイル",
+  "作業を小さく分けたタスクリスト", "AIの役割分担", "使用する道具", "完成条件", "検品方法",
+  "途中経過の保存方法", "セッションが切れた場合の引き継ぎ方法", "失敗時の戻し方",
+  "人間の承認が必要な操作", "絶対に行ってはいけない操作", "改善を蓄積する方法",
+];
+
+const FILES = [
+  { id: "AGENTS.md", label: "AGENTS.md",
+    description: "Codex・Cursorなど複数のAIが共通で読む「地図」です。\n目的、正しい情報源の場所、作業の流れ、安全ルールだけを短く書き、詳しい内容は docs/ へ案内します。" },
+  { id: "CLAUDE.md", label: "CLAUDE.md",
+    description: "Claude Codeが毎回自動で読むルールファイルです。\n先頭の @AGENTS.md で共通ルールを読み込み、Claudeだけに守らせたいルールを追記します。200行未満が目安です。" },
+  { id: "docs/mission.md", label: "docs/mission.md",
+    description: "何のためにやるのか、最終的に何が完成すれば成功かを書きます。\nAIが判断に迷ったときの基準になります。" },
+  { id: "docs/requirements.md", label: "docs/requirements.md",
+    description: "仕様・要件の正本です。\n機能、制約、対象範囲（やること・やらないこと）を書きます。他の資料と食い違ったら、ここを正とします。" },
+  { id: "docs/voice.md", label: "docs/voice.md",
+    description: "文体・トーン・用語の統一ルールです。\n記事や文書を作る仕事で使います。コード中心の仕事なら不要なこともあります。" },
+  { id: "docs/safety.md", label: "docs/safety.md",
+    description: "人間の承認が必要な操作、禁止操作、秘密情報の扱いをまとめます。\nAIが越えてはいけない線を1か所で管理します。" },
+  { id: "tasks.json", label: "tasks.json",
+    description: "作業を小さく分けたタスク一覧と、その進捗状態です。\nAIはここから次にやることを選び、完了したら証拠と一緒に記録します。" },
+  { id: "progress.md", label: "progress.md",
+    description: "今どこまで進んだか、次に何をするか、未解決の問題を書く引き継ぎメモです。\n会話が切れても、別のAIに替えても、これを読めば再開できます。" },
+  { id: "evals/acceptance.md", label: "evals/acceptance.md",
+    description: "完成条件（合格基準）のチェックリストです。\nAIの「できました」ではなく、この基準に照らして合否を判定します。" },
+  { id: "SKILL.md", label: "SKILL.md",
+    description: "何度も使う作業手順をまとめた「AI用の業務マニュアル」です。\n必要なときだけ読み込まれるので、ルールファイルを膨らませずに済みます。" },
+  { id: "docs/architecture.md", label: "docs/architecture.md（SE向け）",
+    description: "システム構成、主要なコンポーネント、データの流れ、技術選定の理由を書きます。\nAIが既存の設計を壊さずに変更するための前提資料です。" },
+  { id: "docs/coding-standards.md", label: "docs/coding-standards.md（SE向け）",
+    description: "命名規則、ディレクトリ構成、エラー処理の方針、使ってよいライブラリなどのコーディング規約です。\nAIが書くコードのばらつきを抑えます。" },
+  { id: "docs/test-plan.md", label: "docs/test-plan.md（SE向け）",
+    description: "テスト方針、テストケース、実行コマンド、合格基準をまとめます。\nAIがテストを実行して証拠を残すときの手順書になります。" },
+];
+const DEFAULT_FILES = [
+  "AGENTS.md", "CLAUDE.md", "docs/mission.md", "docs/requirements.md", "docs/voice.md",
+  "docs/safety.md", "tasks.json", "progress.md", "evals/acceptance.md", "SKILL.md",
+];
+const LESSONS_FILE = "lessons.md";
+
+const TASK_FIELDS = [
+  { id: "id", label: "id",
+    description: "タスクを区別するための番号です（例：T-001）。\n他のタスクから参照したり、進捗を報告したりするときに使います。" },
+  { id: "task", label: "task",
+    description: "やることを1文で書きます（例：「ログインAPIの単体テストを書く」）。\n1回の作業セッションで終わる大きさに分けるのがコツです。" },
+  { id: "status", label: "status",
+    description: "今の状態です。\n例：todo（未着手）／in_progress（作業中）／done（完了）／blocked（何かに止められている）" },
+  { id: "passes", label: "passes",
+    description: "完成条件を満たしたかどうか（true / false）です。\nAIの自己申告ではなく、evidence の証拠で判定した結果を入れます。" },
+  { id: "evidence", label: "evidence",
+    description: "合格と判断した根拠の場所です。\n例：成果物のファイルパス、テスト結果のログ、スクリーンショット、出典URL" },
+  { id: "dependencies", label: "dependencies",
+    description: "先に終わっている必要があるタスクの id 一覧です（例：[\"T-001\", \"T-003\"]）。\nAIが順番を飛ばして作業するのを防ぎます。" },
+  { id: "owner", label: "owner",
+    description: "そのタスクの担当です（例：計画役、実行役、Codex）。\n複数の役割やツールで分担するときに、誰の仕事かをはっきりさせます。" },
+  { id: "updated_at", label: "updated_at",
+    description: "最後に更新した日時です（例：2026-10-19T10:30）。\n長く放置されたタスクや、古い情報に気づくために使います。" },
+  { id: "priority", label: "priority",
+    description: "優先度です（例：high / medium / low）。\nタスクが多いときに、AIがどれから手を付けるべきか判断する材料になります。" },
+  { id: "files", label: "files",
+    description: "そのタスクで変更・作成するファイルの一覧です。\n複数のAIが同じファイルを同時に書き換える衝突を防ぐのに役立ちます（SE向け）。" },
+];
+const DEFAULT_TASK_FIELDS = ["id", "task", "status", "passes", "evidence", "dependencies"];
+
+const EVIDENCE_TYPES = ["成果物", "テスト結果", "出典", "スクリーンショット", "ログ", "Gitの差分"];
+const DEFAULT_EVIDENCE = ["成果物", "テスト結果", "出典", "スクリーンショット", "ログ"];
+
+const APPROVALS = [
+  "メールやDMの送信", "SNSへの投稿", "購入や決済", "データの削除", "本番環境への反映",
+  "権限の変更", "顧客への連絡", "法的な同意", "広告予算の変更", "外部APIへの書き込み",
+];
+const DEFAULT_APPROVALS = APPROVALS.slice(0, 8);
+
+const AUTO_LEVELS = [
+  "レベル0：相談だけ。AIは回答するだけで、ファイルや外部サービスには触らない。",
+  "レベル1：読み取りまで。資料、コード、データを読むが、変更しない。",
+  "レベル2：下書きとローカル変更まで。外部への公開・送信は行わない。",
+  "レベル3：承認付き実行まで。外部操作は内容を表示し、人間が承認した場合だけ実行する。",
+  "レベル4：限定的な自動実行まで。十分に検品された定型作業だけ、対象・上限・時間・操作範囲を固定して自動で動かす。",
+];
+
+const IMPROVEMENTS = [
+  { id: "human-rules", label: "失敗原因を特定してルール・資料・チェックを追加する",
+    text: "失敗した時は「もっと頑張る」ではなく、不足している資料・道具・構造・完成条件を特定し、ルール・資料・スキル・チェックを追加する手順を設計してください。" },
+  { id: "compare-variants", label: "比較で改善する（2案を同じタスクで試して良い方を採用）",
+    text: "改善案は1つに決め打ちせず、2つのハーネス案を作り、同じタスクで両方を試し、成果物と証拠の違いを比べて良い方を採用する手順を設計してください。" },
+  { id: "lessons", label: "教訓ファイルで蓄積する（lessons.md を progress.md と分ける）",
+    text: "証拠付きの教訓だけを記録する lessons.md を用意し、進行中の状態を書く progress.md とは分けて管理してください。教訓は、汎用的なもの（どの仕事にも使える）と業務固有のものに分け、次の仕事でも再利用できる形で書いてください。" },
+];
+const DEFAULT_IMPROVEMENTS = ["human-rules"];
+
+const OUTPUT_SECTIONS = [
+  "この仕事でハーネスが必要な理由", "推奨するAIツールと役割", "全体の作業フロー", "フォルダ構成",
+  "各ファイルの完成版", "役割ごとの設計", "検品方法", "安全設計", "最初に実行する1つ目のタスク", "使い方の説明",
+];
+
+const RUN_MODES = [
+  { id: "design-only", label: "設計だけ作る（本番の仕事は始めない）",
+    text: "まだ本番の仕事は始めず、最初にハーネス設計だけを完成させてください。" },
+  { id: "design-then-first", label: "設計を作ってから、最初の1タスクだけ実行する",
+    text: "まずハーネス設計を完成させ、その後 tasks.json の最初の1タスクだけを実行し、検品結果と証拠を示して止まってください。" },
+];
+
+const STORAGE_KEY = "harness-prompt-builder:v1";
+
+/* ===== 初期状態 ===== */
+
+function createDefaultState() {
+  return {
+    jobPreset: "article",
+    job: JOB_PRESETS[0].text,
+    level: "beginner",
+    tools: [...TOOLS],
+    letAiChooseTools: true,
+    roleCount: "3",
+    rolePreset: "general",
+    designItems: [...DESIGN_ITEMS],
+    files: [...DEFAULT_FILES],
+    taskFields: [...DEFAULT_TASK_FIELDS],
+    evidence: [...DEFAULT_EVIDENCE],
+    approvals: [...DEFAULT_APPROVALS],
+    autoLevelMax: "2",
+    improvements: [...DEFAULT_IMPROVEMENTS],
+    outputSections: [...OUTPUT_SECTIONS],
+    runMode: "design-only",
+    extraRules: "",
+  };
+}
+
+/* ===== フォーム描画 ===== */
+
+const form = document.getElementById("builder");
+
+function createChoiceLabel(name, type, value, labelText) {
+  const label = document.createElement("label");
+  label.className = "opt";
+  const input = document.createElement("input");
+  input.type = type;
+  input.name = name;
+  input.value = value;
+  label.append(input, document.createTextNode(labelText));
+  return label;
+}
+
+// 説明ボタンは label の外に置く。label の中に置くとクリックでチェック状態まで変わってしまうため
+function createDetailedChoice(label, description, toggleText) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "choice";
+
+  const head = document.createElement("div");
+  head.className = "choice-head";
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "detail-toggle";
+  toggle.textContent = toggleText;
+  toggle.setAttribute("aria-expanded", "false");
+  head.append(label, toggle);
+
+  const body = document.createElement("div");
+  body.className = "detail-body";
+  body.textContent = description;
+  body.hidden = true;
+
+  toggle.addEventListener("click", () => {
+    const willOpen = body.hidden;
+    body.hidden = !willOpen;
+    toggle.setAttribute("aria-expanded", String(willOpen));
+  });
+
+  wrapper.append(head, body);
+  return wrapper;
+}
+
+function renderChoices(containerId, name, type, options, toggleText = "説明") {
+  const container = document.getElementById(containerId);
+  for (const option of options) {
+    const value = typeof option === "string" ? option : option.id;
+    const labelText = typeof option === "string" ? option : option.label;
+    const label = createChoiceLabel(name, type, value, labelText);
+    const hasDescription = typeof option === "object" && option.description;
+    container.append(hasDescription ? createDetailedChoice(label, option.description, toggleText) : label);
+  }
+}
+
+// option.group があれば、同じ group の選択肢を optgroup にまとめる
+function renderSelect(selectId, options) {
+  const select = document.getElementById(selectId);
+  const groups = new Map();
+  for (const option of options) {
+    if (!option.group) {
+      select.append(new Option(option.label, option.id));
+      continue;
+    }
+    if (!groups.has(option.group)) {
+      const optgroup = document.createElement("optgroup");
+      optgroup.label = option.group;
+      groups.set(option.group, optgroup);
+      select.append(optgroup);
+    }
+    groups.get(option.group).append(new Option(option.label, option.id));
+  }
+}
+
+// 「全部選択／全部外す」ボタンは長いチェックリストにだけ付ける
+function renderBulkButtons() {
+  for (const holder of document.querySelectorAll(".mini-btns[data-group]")) {
+    const groupName = holder.dataset.group;
+    for (const [labelText, shouldCheck] of [["全部選択", true], ["全部外す", false]]) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = labelText;
+      button.addEventListener("click", () => {
+        form.querySelectorAll(`input[name="${groupName}"]`).forEach((input) => { input.checked = shouldCheck; });
+        handleChange();
+      });
+      holder.append(button);
+    }
+  }
+}
+
+function buildForm() {
+  renderSelect("jobPreset", JOB_PRESETS);
+  renderSelect("rolePreset", ROLE_PRESETS);
+  renderChoices("levelOptions", "level", "radio", LEVELS, "例を見る");
+  renderChoices("toolOptions", "tools", "checkbox", TOOLS);
+  renderChoices("designItemOptions", "designItems", "checkbox", DESIGN_ITEMS);
+  renderChoices("fileOptions", "files", "checkbox", FILES);
+  renderChoices("taskFieldOptions", "taskFields", "checkbox", TASK_FIELDS);
+  renderChoices("evidenceOptions", "evidence", "checkbox", EVIDENCE_TYPES);
+  renderChoices("approvalOptions", "approvals", "checkbox", APPROVALS);
+  renderChoices("improvementOptions", "improvements", "checkbox", IMPROVEMENTS);
+  renderChoices("outputSectionOptions", "outputSections", "checkbox", OUTPUT_SECTIONS);
+  renderChoices("runModeOptions", "runMode", "radio", RUN_MODES);
+  renderBulkButtons();
+}
+
+/* ===== フォーム ⇔ 状態 ===== */
+
+function readCheckedValues(name) {
+  return [...form.querySelectorAll(`input[name="${name}"]:checked`)].map((input) => input.value);
+}
+
+function readState() {
+  return {
+    jobPreset: form.jobPreset.value,
+    job: form.job.value,
+    level: form.querySelector('input[name="level"]:checked')?.value ?? "beginner",
+    tools: readCheckedValues("tools"),
+    letAiChooseTools: form.letAiChooseTools.checked,
+    roleCount: form.roleCount.value,
+    rolePreset: form.rolePreset.value,
+    designItems: readCheckedValues("designItems"),
+    files: readCheckedValues("files"),
+    taskFields: readCheckedValues("taskFields"),
+    evidence: readCheckedValues("evidence"),
+    approvals: readCheckedValues("approvals"),
+    autoLevelMax: form.autoLevelMax.value,
+    improvements: readCheckedValues("improvements"),
+    outputSections: readCheckedValues("outputSections"),
+    runMode: form.querySelector('input[name="runMode"]:checked')?.value ?? "design-only",
+    extraRules: form.extraRules.value,
+  };
+}
+
+function applyState(state) {
+  form.jobPreset.value = state.jobPreset;
+  form.job.value = state.job;
+  form.letAiChooseTools.checked = state.letAiChooseTools;
+  form.roleCount.value = state.roleCount;
+  form.rolePreset.value = state.rolePreset;
+  form.autoLevelMax.value = state.autoLevelMax;
+  form.extraRules.value = state.extraRules;
+
+  const multiValueGroups = ["tools", "designItems", "files", "taskFields", "evidence", "approvals", "improvements", "outputSections"];
+  for (const name of multiValueGroups) {
+    const selected = new Set(state[name]);
+    form.querySelectorAll(`input[name="${name}"]`).forEach((input) => { input.checked = selected.has(input.value); });
+  }
+  for (const name of ["level", "runMode"]) {
+    form.querySelectorAll(`input[name="${name}"]`).forEach((input) => { input.checked = input.value === state[name]; });
+  }
+}
+
+/* ===== 保存（ブラウザによっては使えないので失敗しても動くようにする） ===== */
+
+function loadSavedState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    // 選択肢を増やしたときに古い保存データでも欠けた項目が埋まるよう、初期値に重ねる
+    return { ...createDefaultState(), ...JSON.parse(raw) };
+  } catch {
+    return null;
+  }
+}
+
+function saveState(state) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    // 保存できない環境でもプロンプト生成は続けられるので無視する
+  }
+}
+
+/* ===== プロンプト組み立て ===== */
+
+function bulletList(items) {
+  return items.map((item) => `- ${item}`).join("\n");
+}
+
+function numberedList(items) {
+  return items.map((item, index) => `${index + 1}. ${item}`).join("\n");
+}
+
+function buildToolsSection(state) {
+  if (state.tools.length === 0) {
+    return "# 使用予定のツール\n\nツールは指定しません。この仕事に最適なものを提案してください。";
+  }
+  const policy = state.letAiChooseTools
+    ? "全部使う必要はありません。\nこの仕事に必要なものだけ選んでください。"
+    : "上記のツールだけを使って設計してください。";
+  return `# 使用予定のツール\n\n${bulletList(state.tools)}\n\n${policy}`;
+}
+
+function buildRolesSection(state) {
+  const preset = ROLE_PRESETS.find((p) => p.id === state.rolePreset) ?? ROLE_PRESETS[0];
+  const roleNames = preset.byCount[state.roleCount];
+  const countNote = state.roleCount === "1"
+    ? "役割は分けず、1つのAIが担当します。ただし、作業後に完成条件で自己検品する手順を必ず入れてください。"
+    : `役割は最初から増やしすぎず、${state.roleCount}役にしてください。`;
+  return `# 役割設計
+
+${countNote}
+
+${bulletList(roleNames)}
+
+それぞれについて、次を明記してください。
+
+- 何を担当するか
+- 何を担当しないか
+- 最初に読む資料
+- 使用できる道具
+- 返す成果物
+- 完了条件`;
+}
+
+function buildFilesSection(state) {
+  const files = [...state.files];
+  if (state.improvements.includes("lessons") && !files.includes(LESSONS_FILE)) files.push(LESSONS_FILE);
+  if (files.length === 0) return "";
+
+  const notes = [];
+  if (files.includes("AGENTS.md")) {
+    notes.push("AGENTS.mdは百科事典にせず、必要な資料へ案内する地図として作ってください。");
+  }
+  if (files.includes("CLAUDE.md")) {
+    notes.push(files.includes("AGENTS.md")
+      ? "CLAUDE.mdはAGENTS.mdを読み込み、Claude専用ルールだけを追加してください。"
+      : "CLAUDE.mdは200行未満で、毎回守るべき基本ルールだけを書いてください。");
+  }
+  const noteText = notes.length > 0 ? `\n\n${notes.join("\n\n")}` : "";
+  return `# ファイル設計
+
+次のファイルが必要か判断し、必要なものは中身まで作ってください。
+
+${bulletList(files)}${noteText}`;
+}
+
+function buildTaskSection(state) {
+  if (!state.files.includes("tasks.json") || state.taskFields.length === 0) return "";
+  return `# タスク管理
+
+tasks.jsonには次の項目を入れてください。
+
+${bulletList(state.taskFields)}
+
+AIが勝手にタスクを削除したり、完成条件を書き換えたりしないルールも作ってください。`;
+}
+
+function buildEvidenceSection(state) {
+  const evidenceText = state.evidence.length > 0
+    ? `必ず、${state.evidence.join("、")}など、仕事に合った証拠で判定してください。`
+    : "必ず、仕事に合った証拠で判定してください。";
+  return `# 検品
+
+AI自身の「完成しました」という発言を合格理由にしてはいけません。
+
+${evidenceText}`;
+}
+
+function buildSafetySection(state) {
+  const approvalText = state.approvals.length > 0
+    ? `以下は、必ず人間の承認を必要とします。\n\n${bulletList(state.approvals)}\n\n`
+    : "";
+  const levelIndex = Number(state.autoLevelMax);
+  return `# 安全ルール
+
+${approvalText}AIに許す自動化の上限は次の通りです。これを超える操作は設計に含めないでください。
+
+${AUTO_LEVELS[levelIndex]}
+
+APIキー、パスワード、秘密情報を指示ファイルへ直接書かないでください。`;
+}
+
+function buildImprovementSection(state) {
+  const selected = IMPROVEMENTS.filter((item) => state.improvements.includes(item.id));
+  if (selected.length === 0) return "";
+  return `# 改善の蓄積
+
+${selected.map((item) => item.text).join("\n\n")}`;
+}
+
+function buildOutputSection(state) {
+  if (state.outputSections.length === 0) return "";
+  // 選ばれた項目だけに A, B, C... を振り直す
+  const lines = state.outputSections.map((section, index) => `${String.fromCharCode(65 + index)}. ${section}`);
+  return `# 出力順\n\n${lines.join("\n")}`;
+}
+
+function buildPrompt(state) {
+  const level = LEVELS.find((l) => l.id === state.level) ?? LEVELS[0];
+  const runMode = RUN_MODES.find((m) => m.id === state.runMode) ?? RUN_MODES[0];
+  const jobText = state.job.trim() || "（ここにAIへ任せたい仕事を書く）";
+  const extraRules = state.extraRules.trim();
+
+  const sections = [
+    "あなたは、AIに仕事を安定して任せるための「ハーネス設計者」です。",
+    level.text,
+    `# 仕事\n\n${jobText}`,
+    buildToolsSection(state),
+    "# 目的\n\n一発だけ使うプロンプトではなく、何度も再利用でき、途中で会話が切れても、別のAIへ移っても仕事を続けられる仕組みを作ってください。",
+    state.designItems.length > 0 ? `# 必ず設計するもの\n\n${numberedList(state.designItems)}` : "",
+    buildRolesSection(state),
+    buildFilesSection(state),
+    buildTaskSection(state),
+    buildEvidenceSection(state),
+    buildSafetySection(state),
+    buildImprovementSection(state),
+    extraRules ? `# 追加の条件\n\n${extraRules}` : "",
+    buildOutputSection(state),
+    `不明点がある場合は、勝手に事実を作らず、妥当な仮定として明記してください。\n\n${runMode.text}`,
+  ];
+  return sections.filter(Boolean).join("\n\n");
+}
+
+/* ===== 画面更新 ===== */
+
+const output = document.getElementById("output");
+const charCount = document.getElementById("charCount");
+const autoLevelDesc = document.getElementById("autoLevelDesc");
+const toast = document.getElementById("toast");
+
+function showToast(message) {
+  toast.textContent = message;
+  setTimeout(() => { toast.textContent = ""; }, 2000);
+}
+
+function handleChange() {
+  const state = readState();
+  const prompt = buildPrompt(state);
+  output.textContent = prompt;
+  charCount.textContent = `${prompt.length.toLocaleString()} 文字`;
+  autoLevelDesc.textContent = AUTO_LEVELS[Number(state.autoLevelMax)];
+  saveState(state);
+}
+
+function handlePresetChange() {
+  const preset = JOB_PRESETS.find((p) => p.id === form.jobPreset.value);
+  // 自由入力を選んだときは、書きかけの内容を消さない
+  if (preset && preset.id !== "custom") form.job.value = preset.text;
+  handleChange();
+}
+
+async function copyPrompt() {
+  try {
+    await navigator.clipboard.writeText(output.textContent);
+    showToast("コピーしました");
+  } catch {
+    // file:// で開いた場合などクリップボードAPIが使えないときは選択状態にして手動コピーを促す
+    const range = document.createRange();
+    range.selectNodeContents(output);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    showToast("自動コピーできませんでした。選択済みなので Ctrl+C / ⌘+C でコピーしてください");
+  }
+}
+
+function downloadPrompt() {
+  const blob = new Blob([output.textContent], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "harness-prompt.md";
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function resetToDefault() {
+  applyState(createDefaultState());
+  handleChange();
+  showToast("初期設定に戻しました");
+}
+
+/* ===== 起動 ===== */
+
+buildForm();
+applyState(loadSavedState() ?? createDefaultState());
+handleChange();
+
+form.addEventListener("input", handleChange);
+form.addEventListener("submit", (event) => event.preventDefault());
+form.jobPreset.addEventListener("change", handlePresetChange);
+document.getElementById("copyBtn").addEventListener("click", copyPrompt);
+document.getElementById("downloadBtn").addEventListener("click", downloadPrompt);
+document.getElementById("resetBtn").addEventListener("click", resetToDefault);
+</script>
+</body>
+</html>
