@@ -1,0 +1,1030 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ハーネスプロンプトビルダー</title>
+<style>
+  :root {
+    --bg: #f6f5f1;
+    --panel: #ffffff;
+    --text: #1d1d1b;
+    --muted: #6b6a65;
+    --line: #dedcd4;
+    --accent: #2f5d50;
+    --accent-soft: #e3ece8;
+    --warn: #9a4a12;
+    --code-bg: #fbfaf7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #161716;
+      --panel: #1f201f;
+      --text: #ecebe6;
+      --muted: #a09f98;
+      --line: #34352f;
+      --accent: #7fbfa8;
+      --accent-soft: #24332e;
+      --warn: #e0a070;
+      --code-bg: #1a1b1a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+  }
+  header { padding: 24px 16px 8px; max-width: 1280px; margin: 0 auto; }
+  header h1 { margin: 0; font-size: 22px; letter-spacing: 0.02em; }
+  header p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 20px;
+    padding: 16px;
+    max-width: 1280px;
+    margin: 0 auto;
+  }
+  @media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+
+  fieldset {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px 16px 16px;
+    margin: 0 0 14px;
+    min-width: 0;
+  }
+  legend { font-weight: 700; padding: 0 6px; font-size: 14px; }
+  .hint { color: var(--muted); font-size: 12px; margin: 0 0 8px; }
+  .options { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+  .options.column { flex-direction: column; gap: 4px; }
+  label.opt { display: inline-flex; align-items: flex-start; gap: 6px; cursor: pointer; font-size: 14px; }
+  label.opt input { margin-top: 4px; accent-color: var(--accent); }
+  select, textarea {
+    width: 100%;
+    font: inherit;
+    color: var(--text);
+    background: var(--code-bg);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 8px;
+  }
+  textarea { resize: vertical; min-height: 70px; }
+  .row { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+  .row > label { font-size: 13px; color: var(--muted); }
+  input[type="range"] { width: 100%; accent-color: var(--accent); }
+  .level-desc { font-size: 13px; background: var(--accent-soft); border-radius: 6px; padding: 6px 10px; margin-top: 6px; }
+  .mini-btns { display: flex; gap: 6px; margin-bottom: 8px; }
+  .mini-btns button { font-size: 12px; padding: 2px 8px; }
+
+  /* 説明付きの選択肢：チェックボックスと「説明」を横並びにし、開くと下に詳細が出る */
+  .options.detailed { flex-direction: column; gap: 6px; }
+  .choice { border-bottom: 1px dashed var(--line); padding-bottom: 6px; }
+  .choice:last-child { border-bottom: none; padding-bottom: 0; }
+  .choice-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+  .detail-toggle {
+    flex-shrink: 0;
+    font-size: 12px;
+    color: var(--accent);
+    padding: 1px 10px;
+    border-radius: 999px;
+  }
+  .detail-toggle::after { content: " ▾"; }
+  .detail-toggle[aria-expanded="true"]::after { content: " ▴"; }
+  .detail-body {
+    margin-top: 6px;
+    font-size: 13px;
+    line-height: 1.7;
+    white-space: pre-line;
+    background: var(--accent-soft);
+    border-radius: 6px;
+    padding: 8px 10px;
+  }
+
+  .preview {
+    position: sticky;
+    top: 16px;
+    align-self: start;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 32px);
+  }
+  @media (max-width: 900px) { .preview { position: static; max-height: none; } }
+  .preview-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  .preview-head h2 { margin: 0; font-size: 15px; }
+  .count { color: var(--muted); font-size: 12px; }
+  pre#output {
+    margin: 0;
+    background: var(--code-bg);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 12px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12.5px;
+    overflow: auto;
+    flex: 1;
+    min-height: 300px;
+  }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    font: inherit;
+    font-size: 13px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--text);
+    cursor: pointer;
+  }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); font-weight: 700; }
+  button:hover { filter: brightness(0.96); }
+  .warning { color: var(--warn); font-size: 12px; margin: 8px 0 0; }
+  .toast { color: var(--accent); font-size: 12px; min-height: 18px; margin-top: 6px; }
+  .field-label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
+  .field-label:first-of-type { margin-top: 0; }
+  .choice.is-disabled { opacity: 0.45; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ハーネスプロンプトビルダー</h1>
+  <p>Claude Code を中心にしたハーネスを設計させるプロンプトを組み立てます。選択内容は右側に即時反映され、このブラウザに自動保存されます。</p>
+</header>
+
+<div class="layout">
+  <form id="builder" autocomplete="off">
+    <fieldset>
+      <legend>1. 任せたい仕事</legend>
+      <div class="row">
+        <label for="jobPreset">テンプレート</label>
+        <select id="jobPreset" name="jobPreset"></select>
+      </div>
+      <textarea id="job" name="job" rows="3" placeholder="AIに任せたい仕事を書く"></textarea>
+    </fieldset>
+
+    <fieldset>
+      <legend>2. プロジェクト情報（任意）</legend>
+      <p class="hint">ここが具体的なほど、一般論ではない、そのプロジェクト専用のハーネスになります。わかる範囲で書いてください。空欄の項目はプロンプトに出力されません。</p>
+      <label class="field-label" for="projCommands">ビルド・テスト・lintのコマンド</label>
+      <textarea id="projCommands" name="projCommands" rows="2" placeholder="例：npm run build / npm test / npm run lint"></textarea>
+      <label class="field-label" for="projNoTouch">AIに触らせたくない場所</label>
+      <textarea id="projNoTouch" name="projNoTouch" rows="2" placeholder="例：infra/prod/ 配下、.env、DBマイグレーションの既存ファイル"></textarea>
+      <label class="field-label" for="projFailures">過去にAIが起こした失敗</label>
+      <textarea id="projFailures" name="projFailures" rows="2" placeholder="例：テストを書き換えて通したことにした / 既存の共通関数を無視して重複実装した"></textarea>
+    </fieldset>
+
+    <fieldset>
+      <legend>3. あなたのレベル（説明の詳しさ）</legend>
+      <p class="hint">「例を見る」で、同じ用語（MCP）がレベルごとにどう説明されるかを確認できます。</p>
+      <div class="options detailed" id="levelOptions"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>4. 使用するツール</legend>
+      <p class="hint">Codex を選ぶと、共通ルールを AGENTS.md に置き、CLAUDE.md から読み込む構成になります。選ばない場合は CLAUDE.md だけで完結させます。</p>
+      <div class="options detailed" id="toolOptions"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>5. 進め方</legend>
+      <p class="hint">設計を始める前に、何を調べて誰に確認するか</p>
+      <div class="options detailed" id="investigationOptions"></div>
+      <div class="options" style="margin-top:10px">
+        <label class="opt"><input type="checkbox" name="stopEachPhase">各フェーズの終わりで止まり、私の確認を待つ</label>
+      </div>
+      <p class="hint" style="margin-top:12px">ハーネスの試運転（ハーネス自体の検品）</p>
+      <div class="options detailed" id="trialOptions"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>6. 強制の仕組み</legend>
+      <p class="hint">Markdownに書いたルールは「お願い」なので、読み落とされれば破られます。絶対に守らせたいことは、ここで選んだ仕組みで強制させます。</p>
+      <div class="options detailed" id="enforcementOptions"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>7. 役割設計</legend>
+      <div class="row">
+        <label for="roleCount">役割の数</label>
+        <select id="roleCount" name="roleCount">
+          <option value="1">1役（1人で兼任）</option>
+          <option value="2">2役</option>
+          <option value="3" selected>3役</option>
+        </select>
+        <label for="rolePreset">役割の型</label>
+        <select id="rolePreset" name="rolePreset"></select>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>8. 必ず設計するもの</legend>
+      <div class="mini-btns" data-group="designItems"></div>
+      <div class="options column" id="designItemOptions"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>9. 作成するファイル</legend>
+      <div class="mini-btns" data-group="files"></div>
+      <p class="hint">強制の仕組み・試運転・改善方法で必要になるファイル（.claude/settings.json など）は、選択に応じて自動で追加されます。</p>
+      <div class="options detailed" id="fileOptions"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>10. tasks.json の項目</legend>
+      <div class="options detailed" id="taskFieldOptions"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>11. 検品で認める証拠</legend>
+      <div class="options" id="evidenceOptions"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>12. 安全設計</legend>
+      <p class="hint">人間の承認を必須にする操作</p>
+      <div class="options" id="approvalOptions"></div>
+      <p class="hint" style="margin-top:12px">AIに許す自動化レベルの上限</p>
+      <input type="range" id="autoLevelMax" name="autoLevelMax" min="0" max="4" step="1" value="2">
+      <div class="level-desc" id="autoLevelDesc"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>13. 改善の蓄積方法</legend>
+      <div class="options detailed" id="improvementOptions"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>14. 出力内容</legend>
+      <div class="mini-btns" data-group="outputSections"></div>
+      <div class="options column" id="outputSectionOptions"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>15. 追加の条件（任意）</legend>
+      <textarea id="extraRules" name="extraRules" rows="3" placeholder="例：社内用語集は docs/glossary.md を正とする / PRは200行以内に分ける"></textarea>
+    </fieldset>
+  </form>
+
+  <section class="preview" aria-label="生成されたプロンプト">
+    <div class="preview-head">
+      <h2>生成されたプロンプト <span class="count" id="charCount"></span></h2>
+      <div class="actions">
+        <button type="button" class="primary" id="copyBtn">コピー</button>
+        <button type="button" id="downloadBtn">.md で保存</button>
+        <button type="button" id="resetBtn">初期設定に戻す</button>
+      </div>
+    </div>
+    <pre id="output"></pre>
+    <div class="toast" id="toast" role="status"></div>
+  </section>
+</div>
+
+<script>
+"use strict";
+
+/* ===== 選択肢の定義（ここを編集すれば選択肢を増減できる） ===== */
+
+// group はテンプレートのドロップダウン内の見出し（optgroup）になる
+const JOB_PRESETS = [
+  { id: "system-new",  group: "SE・システム開発", label: "新規システム開発（要件定義〜リリース準備）",
+    text: "新規の業務システムを、要件定義・設計・実装・テスト・リリース準備まで段階的に開発したい。各工程の成果物（要件定義書、設計書、コード、テスト結果）を残したい。" },
+  { id: "feature",     group: "SE・システム開発", label: "既存システムへの機能追加",
+    text: "既存のWebアプリに新機能を追加し、テストとレビューを通した状態でリリース準備まで進めたい。" },
+  { id: "bugfix",      group: "SE・システム開発", label: "不具合調査・修正",
+    text: "報告された不具合について、再現手順の確立、原因調査、修正、再発防止のテスト追加までを行いたい。" },
+  { id: "refactor",    group: "SE・システム開発", label: "リファクタリング",
+    text: "既存システムの動作を変えずに、読みやすさと保守性を上げるリファクタリングを段階的に進めたい。" },
+  { id: "design-doc",  group: "SE・システム開発", label: "設計書作成（基本設計・詳細設計）",
+    text: "要件をもとに、基本設計書と詳細設計書（画面、API、DB、処理フロー）を作成したい。" },
+  { id: "test",        group: "SE・システム開発", label: "テスト設計・自動テスト",
+    text: "既存システムのテスト計画を立て、テストケースを作成し、自動テストの実装と実行結果の記録まで行いたい。" },
+  { id: "infra",       group: "SE・システム開発", label: "インフラ構築（IaC）",
+    text: "クラウド上の環境をIaC（TerraformやCDKなど）で構築し、レビューと差分確認を経て適用できる状態にしたい。" },
+  { id: "reverse-doc", group: "SE・システム開発", label: "既存コードの解析・ドキュメント化",
+    text: "既存システムのソースコードを解析し、構成図、処理フロー、仕様書などのドキュメントを作成したい。" },
+  { id: "code-review", group: "SE・システム開発", label: "コードレビュー",
+    text: "プルリクエストの変更内容を、可読性・設計・セキュリティ・テストの観点でレビューし、指摘を重要度付きでまとめたい。" },
+
+  { id: "article",  group: "コンテンツ・業務", label: "記事制作",     text: "生成AI初心者向けに、最新情報を使った1万文字の記事を継続的に制作したい。" },
+  { id: "lp",       group: "コンテンツ・業務", label: "LP改善",       text: "自社商品のLPを、スマホで読みやすく、CTAボタンまで迷わず進める構成に改善したい。" },
+  { id: "research", group: "コンテンツ・業務", label: "調査レポート", text: "指定したテーマについて、一次情報に基づく調査レポートを作りたい。" },
+
+  { id: "custom", group: "その他", label: "自由入力", text: "" },
+];
+
+// description は「例を見る」で開く内容。同じ用語（MCP）の説明の違いでレベル差を見せる
+const LEVELS = [
+  { id: "beginner", label: "初心者",
+    text: "私はAI初心者です。\n専門用語を使う場合は、中学生でもわかる説明を付けてください。",
+    description: "向いている人：AIツールをほとんど使ったことがない、ターミナルを触らない\n\n「MCP」の説明の例：\nMCPは、AIと外部のサービスをつなぐ「延長コード」のようなものです。これをつなぐと、AIがGoogleドライブの資料を読んだり、カレンダーを確認したりできるようになります。" },
+  { id: "intermediate", label: "中級者",
+    text: "私はAIツールを日常的に使っています。\n専門用語は使って構いませんが、重要な概念には一言説明を付けてください。",
+    description: "向いている人：ChatGPTやClaudeを毎日使っている、設定ファイルを少し編集できる\n\n「MCP」の説明の例：\nMCP（AIと外部ツールをつなぐ共通規格）でGitHubとGoogleドライブに接続します。使わないサーバーまでつなぐとAIが迷うので、必要な分だけに絞ってください。" },
+  { id: "expert", label: "エンジニア",
+    text: "私はエンジニアです。\n専門用語の説明は不要です。簡潔に、実装できる具体性で書いてください。",
+    description: "向いている人：開発業務をしている、Claude CodeやCodexの設定を自分で書ける\n\n「MCP」の説明の例：\nMCP: GitHub（read-only）、Postgres（staging DBのみ）。.mcp.json に定義し、書き込み系ツールは permissions で ask に設定。" },
+];
+
+// role はプロンプトに出力される「そのツールの使い道」
+const TOOLS = [
+  { id: "claude-code", label: "Claude Code",
+    role: "実作業の中心。ファイル編集、コマンド実行、hooks、サブエージェント、スキルを使う",
+    description: "実際に手を動かす中心のツールです。\nファイル編集、コマンド実行に加えて、hooks（自動チェック）、permissions（操作の制限）、サブエージェント（役割分担）、スキル（手順書）を使って、ハーネスを仕組みとして作れます。" },
+  { id: "claude-chat", label: "Claude（チャット）",
+    role: "相談、要件整理、設計レビューに使う。リポジトリのファイルは直接触らない",
+    description: "要件を整理したり、設計案をレビューしたりする相談相手です。\nファイルやコマンドには触れないので、安全に壁打ちできます。決まったことは Claude Code 側のファイルへ反映します。" },
+  { id: "codex", label: "Codex（チームメンバー用）",
+    role: "チームメンバーが使う。Claude Code と同じルールで動くよう、共通ルールを AGENTS.md に置く",
+    description: "自分は使わなくても、チームの誰かが Codex を使う場合に選びます。\nCodex は AGENTS.md を読むので、共通ルールを AGENTS.md に置き、CLAUDE.md は @AGENTS.md で読み込む構成にします。これでどちらのツールでも同じルールが適用されます。" },
+];
+const DEFAULT_TOOLS = ["claude-code", "claude-chat"];
+
+const INVESTIGATIONS = [
+  { id: "repo-and-ask", label: "リポジトリを調査してから、足りない情報を質問する",
+    text: "リポジトリがある場合は、まず読み取りだけで調査し、ビルド・テスト・lintのコマンド、ディレクトリ構成、既存の規約、CI設定、テストの有無を把握してください。そのうえで、ハーネス設計に必要なのにわからない情報を質問リストにまとめ、私の回答を待ってください。推測で埋めないでください。",
+    description: "既存システムの仕事に向いています。\nAIが先にコードや設定を読むので、実際のコマンドや構成に合ったハーネスになります。調査は読み取りだけなので、ファイルは変更されません。" },
+  { id: "ask-only", label: "質問だけしてから設計する（リポジトリなし）",
+    text: "まだリポジトリはありません。ハーネス設計に必要な情報を質問リストにまとめ、私の回答を待ってください。推測で埋めないでください。",
+    description: "新規開発や、コード以外の仕事に向いています。\n最初にAIから質問が来るので、それに答えてから設計が始まります。" },
+  { id: "assume", label: "質問せず、仮定を明記して進める",
+    text: "質問はせず、わからない点は妥当な仮定として明記して進めてください。仮定した箇所は、最後に一覧にしてください。",
+    description: "とりあえず叩き台がほしいときに使います。\n速いですが、肝心な部分ほど推測になりやすいので、仮定の一覧は必ず確認してください。" },
+];
+
+const TRIALS = [
+  { id: "none", label: "試運転しない",
+    description: "ハーネスを作って終わりです。\nハーネスが実際に機能するかは、使いながら確かめることになります。" },
+  { id: "with-harness", label: "代表タスクで試運転し、問題点を直す",
+    description: "代表的なタスクを1〜2個、作ったハーネスで実際に実行します。\n守られなかったルールや足りなかった資料を見つけて、ハーネスを修正します。" },
+  { id: "compare", label: "ハーネスなしとも比較する（Harness² 方式）",
+    description: "同じタスクを「ハーネスあり」と「ハーネスなし」で実行して、結果を比べます。\n差が出なかったルールは、効いていないか不要だとわかります。手間はかかりますが、ハーネスが本当に役立っているかを確かめられる唯一の方法です。" },
+];
+
+// files は、その仕組みを選んだときに自動で作成ファイルへ追加されるもの
+const ENFORCEMENTS = [
+  { id: "permissions", label: "permissions で操作を制限する", files: [".claude/settings.json"],
+    text: ".claude/settings.json の permissions（allow / ask / deny）で、禁止操作を deny、人間の承認が必要な操作を ask にする",
+    description: "Claude Code の設定ファイルで、コマンドやファイル操作ごとに「許可」「毎回確認」「禁止」を決めます。\n例：rm -rf は deny、git push は ask、npm test は allow。\nAIがルールを読み落としても、禁止した操作は実行できません。" },
+  { id: "pre-hook", label: "危険なコマンドを実行前に止める（PreToolUse hook）", files: [".claude/hooks/"],
+    text: "PreToolUse hook で、危険なコマンド（例：rm -rf、git push --force、本番環境への接続）を実行前に検査してブロックする",
+    description: "AIがコマンドを実行する直前に、スクリプトで中身を検査します。\npermissions では書ききれない細かい条件（例：本番のURLを含むコマンド）も止められます。" },
+  { id: "post-hook", label: "編集のたびに自動チェックする（PostToolUse hook）", files: [".claude/hooks/"],
+    text: "PostToolUse hook で、ファイル編集のたびに整形・lint・型チェックを自動実行し、エラーをAIに返す",
+    description: "AIがファイルを書き換えるたびに、整形やlintが自動で走ります。\nエラーはすぐAIに返るので、問題を後回しにせず、その場で直させられます。" },
+  { id: "stop-hook", label: "テストが通るまで終わらせない（Stop hook）", files: [".claude/hooks/"],
+    text: "Stop hook で、作業を終える前にテストを実行し、失敗していれば終了をブロックする",
+    description: "AIが「完了しました」と作業を終えようとしたときに、テストを実行します。\n失敗していれば終われないので、「できていないのに完成と言う」を仕組みで防げます。" },
+  { id: "verify-script", label: "合否をスクリプトで判定する（scripts/verify.sh）", files: ["scripts/verify.sh"],
+    text: "scripts/verify.sh を作り、tasks.json の passes はAIの自己申告ではなく、このスクリプトの実行結果で決める",
+    description: "テスト・lint・ビルドをまとめて実行する検証スクリプトです。\ntasks.json の passes を true にしてよいのは、このスクリプトが成功したときだけ、というルールにします。" },
+  { id: "codex-sandbox", label: "Codex側にも同等の制限をかける（Codex選択時のみ）", requiresTool: "codex", files: [],
+    text: "Codex 側は config.toml の sandbox と承認ポリシーで、Claude Code の permissions と同等の制限をかける",
+    description: "Codex には Claude Code の hooks や permissions が効きません。\nCodex の設定ファイル（config.toml）で、書き込める範囲と承認が必要な操作を揃えます。" },
+];
+// codex-sandbox は Codex 未選択の間は無効化されるので、初期値に入れておいても出力には影響しない
+const DEFAULT_ENFORCEMENTS = ["permissions", "pre-hook", "post-hook", "stop-hook", "verify-script", "codex-sandbox"];
+
+const ROLE_PRESETS = [
+  { id: "building", label: "設計・実装・確認", byCount: { 1: ["実装役（設計・確認を兼任）"],       2: ["実装役", "確認役"], 3: ["設計役", "実装役", "確認役"] } },
+  { id: "general",  label: "計画・実行・評価", byCount: { 1: ["担当役（計画・実行・評価を兼任）"], 2: ["実行役", "評価役"], 3: ["計画役", "実行役", "評価役"] } },
+  { id: "writing",  label: "調査・執筆・編集", byCount: { 1: ["執筆役（調査・編集を兼任）"],       2: ["執筆役", "編集役"], 3: ["調査役", "執筆役", "編集役"] } },
+];
+
+const DESIGN_ITEMS = [
+  "最終的な完成品", "対象者", "AIが最初に読むべき資料", "正しい情報源として扱うファイル",
+  "作業を小さく分けたタスクリスト", "AIの役割分担", "使用する道具", "完成条件", "検品方法",
+  "強制する仕組み（設定・hooks・スクリプト）",
+  "途中経過の保存方法", "セッションが切れた場合の引き継ぎ方法", "失敗時の戻し方",
+  "人間の承認が必要な操作", "絶対に行ってはいけない操作", "改善を蓄積する方法",
+];
+
+const AGENTS_FILE = "AGENTS.md";
+const FILES = [
+  { id: AGENTS_FILE, label: "AGENTS.md（Codex選択時のみ）",
+    description: "Codex が読む共通ルールです。Codex を使わない場合は作りません。\n目的、正しい情報源の場所、作業の流れ、安全ルールだけを短く書き、詳しい内容は docs/ へ案内する「地図」にします。" },
+  { id: "CLAUDE.md", label: "CLAUDE.md",
+    description: "Claude Code が毎回自動で読むルールファイルです。200行未満が目安です。\nCodex も使う場合は、先頭の @AGENTS.md で共通ルールを読み込み、Claude 専用のルールだけを追記します。" },
+  { id: "docs/mission.md", label: "docs/mission.md",
+    description: "何のためにやるのか、最終的に何が完成すれば成功かを書きます。\nAIが判断に迷ったときの基準になります。" },
+  { id: "docs/requirements.md", label: "docs/requirements.md",
+    description: "仕様・要件の正本です。\n機能、制約、対象範囲（やること・やらないこと）を書きます。他の資料と食い違ったら、ここを正とします。" },
+  { id: "docs/architecture.md", label: "docs/architecture.md",
+    description: "システム構成、主要なコンポーネント、データの流れ、技術選定の理由を書きます。\nAIが既存の設計を壊さずに変更するための前提資料です。" },
+  { id: "docs/coding-standards.md", label: "docs/coding-standards.md",
+    description: "命名規則、ディレクトリ構成、エラー処理の方針、使ってよいライブラリなどのコーディング規約です。\nAIが書くコードのばらつきを抑えます。lintで機械的に検査できるものは、ここではなく lint の設定に寄せます。" },
+  { id: "docs/test-plan.md", label: "docs/test-plan.md",
+    description: "テスト方針、テストケース、実行コマンド、合格基準をまとめます。\nAIがテストを実行して証拠を残すときの手順書になります。" },
+  { id: "docs/decisions.md", label: "docs/decisions.md",
+    description: "判断の記録（ADR）です。何を決めたか、なぜそうしたか、却下した案とその理由を残します。\n別のセッションのAIが、一度却下した案をまた提案するのを防げます。" },
+  { id: "docs/voice.md", label: "docs/voice.md",
+    description: "文体・トーン・用語の統一ルールです。\n記事や文書を作る仕事で使います。コード中心の仕事なら不要です。" },
+  { id: "docs/safety.md", label: "docs/safety.md",
+    description: "人間の承認が必要な操作、禁止操作、秘密情報の扱いをまとめます。\n強制の仕組み（permissions・hooks）で実際に縛っている内容と、文章で守らせる内容の対応もここに書きます。" },
+  { id: "tasks.json", label: "tasks.json",
+    description: "作業を小さく分けたタスク一覧と、その進捗状態です。\nAIはここから次にやることを選び、完了したら証拠と一緒に記録します。" },
+  { id: "progress.md", label: "progress.md",
+    description: "今どこまで進んだか、次に何をするか、未解決の問題を書く引き継ぎメモです。\n会話が切れても、別のセッションでも、これを読めば再開できます。" },
+  { id: "evals/acceptance.md", label: "evals/acceptance.md",
+    description: "完成条件（合格基準）のチェックリストです。\nAIの「できました」ではなく、この基準に照らして合否を判定します。" },
+  { id: "SKILL.md", label: "SKILL.md",
+    description: "何度も使う作業手順をまとめた「AI用の業務マニュアル」です。\n必要なときだけ読み込まれるので、CLAUDE.md を膨らませずに済みます。" },
+];
+const DEFAULT_FILES = [
+  AGENTS_FILE, "CLAUDE.md", "docs/mission.md", "docs/requirements.md", "docs/architecture.md",
+  "docs/decisions.md", "docs/safety.md", "tasks.json", "progress.md", "evals/acceptance.md", "SKILL.md",
+];
+
+const TASK_FIELDS = [
+  { id: "id", label: "id",
+    description: "タスクを区別するための番号です（例：T-001）。\n他のタスクから参照したり、進捗を報告したりするときに使います。" },
+  { id: "task", label: "task",
+    description: "やることを1文で書きます（例：「ログインAPIの単体テストを書く」）。\n1回の作業セッションで終わる大きさに分けるのがコツです。" },
+  { id: "status", label: "status",
+    description: "今の状態です。\n例：todo（未着手）／in_progress（作業中）／done（完了）／blocked（何かに止められている）" },
+  { id: "passes", label: "passes",
+    description: "完成条件を満たしたかどうか（true / false）です。\nAIの自己申告ではなく、evidence の証拠（できれば検証スクリプトの結果）で判定した結果を入れます。" },
+  { id: "evidence", label: "evidence",
+    description: "合格と判断した根拠の場所です。\n例：成果物のファイルパス、テスト結果のログ、スクリーンショット、出典URL" },
+  { id: "dependencies", label: "dependencies",
+    description: "先に終わっている必要があるタスクの id 一覧です（例：[\"T-001\", \"T-003\"]）。\nAIが順番を飛ばして作業するのを防ぎます。" },
+  { id: "owner", label: "owner",
+    description: "そのタスクの担当です（例：設計役、実装役、Codex）。\n複数の役割やツールで分担するときに、誰の仕事かをはっきりさせます。" },
+  { id: "updated_at", label: "updated_at",
+    description: "最後に更新した日時です（例：2026-10-21T10:30）。\n長く放置されたタスクや、古い情報に気づくために使います。" },
+  { id: "priority", label: "priority",
+    description: "優先度です（例：high / medium / low）。\nタスクが多いときに、AIがどれから手を付けるべきか判断する材料になります。" },
+  { id: "files", label: "files",
+    description: "そのタスクで変更・作成するファイルの一覧です。\n複数のAIや人が同じファイルを同時に書き換える衝突を防ぐのに役立ちます。" },
+];
+const DEFAULT_TASK_FIELDS = ["id", "task", "status", "passes", "evidence", "dependencies"];
+
+const EVIDENCE_TYPES = ["成果物", "テスト結果", "検証スクリプトの結果", "出典", "スクリーンショット", "ログ", "Gitの差分"];
+const DEFAULT_EVIDENCE = ["成果物", "テスト結果", "検証スクリプトの結果", "ログ", "Gitの差分"];
+
+const APPROVALS = [
+  "メールやDMの送信", "SNSへの投稿", "購入や決済", "データの削除", "本番環境への反映",
+  "権限の変更", "顧客への連絡", "法的な同意", "mainブランチへのpush・マージ", "依存パッケージの追加・更新",
+  "DBスキーマの変更", "外部APIへの書き込み",
+];
+const DEFAULT_APPROVALS = [
+  "データの削除", "本番環境への反映", "権限の変更", "顧客への連絡",
+  "mainブランチへのpush・マージ", "依存パッケージの追加・更新", "DBスキーマの変更",
+];
+
+const AUTO_LEVELS = [
+  "レベル0：相談だけ。AIは回答するだけで、ファイルや外部サービスには触らない。",
+  "レベル1：読み取りまで。資料、コード、データを読むが、変更しない。",
+  "レベル2：下書きとローカル変更まで。外部への公開・送信は行わない。",
+  "レベル3：承認付き実行まで。外部操作は内容を表示し、人間が承認した場合だけ実行する。",
+  "レベル4：限定的な自動実行まで。十分に検品された定型作業だけ、対象・上限・時間・操作範囲を固定して自動で動かす。",
+];
+
+const LESSONS_FILE = "lessons.md";
+const TRIAL_FILE = "evals/harness-trial.md";
+
+const IMPROVEMENTS = [
+  { id: "human-rules", label: "失敗原因を特定して仕組みを足す",
+    text: "失敗した時は「もっと頑張る」ではなく、不足している資料・道具・構造・完成条件を特定してください。対策は、まず強制の仕組み（permissions・hooks・スクリプト）で防げないかを検討し、防げない場合だけルールや資料に書く手順にしてください。",
+    description: "AIが失敗したとき、原因（資料不足、道具不足、完成条件の曖昧さなど）を特定して対策します。\n対策は「文章のルールを足す」より先に「仕組みで防げないか」を考えます。" },
+  { id: "prune", label: "ルールの手入れ（増やすだけでなく削る）",
+    text: "定期的に（例：月1回、または大きな作業の区切りで）ルールを見直し、使われていないルール、守られていないルール、古くなった情報を削除・修正する手順を設計してください。CLAUDE.md が200行を超えそうなら、手順はスキルへ、詳細は docs/ へ移してください。",
+    description: "ルールは放っておくと増える一方で、古い情報が残り、AIが迷う原因になります。\n定期的に見直して、不要なものを削る手順を入れます。" },
+  { id: "compare-variants", label: "比較で改善する（2案を同じタスクで試す）",
+    text: "ハーネスの改善案は1つに決め打ちせず、2つの案を作り、同じタスクで両方を試し、成果物と証拠の違いを比べて良い方を採用する手順を設計してください。",
+    description: "Harness² の考え方を手作業向けにしたものです。\n「たぶん良くなる」ではなく、実際に試した結果で改善案を選びます。" },
+  { id: "lessons", label: "教訓ファイルで蓄積する（lessons.md）",
+    text: "証拠付きの教訓だけを記録する lessons.md を用意し、進行中の状態を書く progress.md とは分けて管理してください。教訓は、汎用的なもの（どの仕事にも使える）と業務固有のものに分け、次の仕事でも再利用できる形で書いてください。",
+    description: "「次からこうする」という学びを、証拠付きで別ファイルに貯めます。\nprogress.md は今の状態、lessons.md は次の仕事にも持っていける知識、と役割を分けます。" },
+  { id: "recall", label: "過去の会話を検索して経緯を確認する（claude-recall）",
+    text: "判断の経緯や過去に試した内容を確認する必要があるときは、claude-recall などで過去の Claude Code セッションを検索するルールを CLAUDE.md に入れてください。会話ログが30日で消えないよう cleanupPeriodDays の延長も提案してください。客先の情報を含む会話が手元に長く残るため、案件のセキュリティルールに反しないか確認する手順も入れてください。",
+    description: "docs/decisions.md に書き漏れた経緯を、過去の会話ログから検索して拾う方法です（Claude Code 限定）。\n会話ログが手元に長期間残るので、客先の案件では保存してよいか事前に確認が必要です。" },
+];
+const DEFAULT_IMPROVEMENTS = ["human-rules", "prune"];
+
+const OUTPUT_SECTIONS = [
+  "この仕事でハーネスが必要な理由", "ツールの使い分け", "全体の作業フロー", "フォルダ構成",
+  "各ファイルの完成版", "強制の仕組み（設定・hooks・スクリプト）と、文章で守らせるルールの対応表",
+  "役割ごとの設計", "検品方法", "安全設計", "最初に実行する1つ目のタスク", "使い方の説明",
+];
+
+const STORAGE_KEY = "harness-prompt-builder:v2";
+
+/* ===== 初期状態 ===== */
+
+function createDefaultState() {
+  return {
+    jobPreset: "feature",
+    job: JOB_PRESETS.find((p) => p.id === "feature").text,
+    projCommands: "",
+    projNoTouch: "",
+    projFailures: "",
+    level: "expert",
+    tools: [...DEFAULT_TOOLS],
+    investigation: "repo-and-ask",
+    stopEachPhase: true,
+    trial: "with-harness",
+    enforcements: [...DEFAULT_ENFORCEMENTS],
+    roleCount: "3",
+    rolePreset: "building",
+    designItems: [...DESIGN_ITEMS],
+    files: [...DEFAULT_FILES],
+    taskFields: [...DEFAULT_TASK_FIELDS],
+    evidence: [...DEFAULT_EVIDENCE],
+    approvals: [...DEFAULT_APPROVALS],
+    autoLevelMax: "2",
+    improvements: [...DEFAULT_IMPROVEMENTS],
+    outputSections: [...OUTPUT_SECTIONS],
+    extraRules: "",
+  };
+}
+
+const MULTI_VALUE_GROUPS = [
+  "tools", "enforcements", "designItems", "files", "taskFields", "evidence", "approvals", "improvements", "outputSections",
+];
+const SINGLE_VALUE_GROUPS = ["level", "investigation", "trial"];
+const TEXT_FIELDS = ["jobPreset", "job", "projCommands", "projNoTouch", "projFailures", "roleCount", "rolePreset", "autoLevelMax", "extraRules"];
+
+/* ===== フォーム描画 ===== */
+
+const form = document.getElementById("builder");
+
+function createChoiceLabel(name, type, value, labelText) {
+  const label = document.createElement("label");
+  label.className = "opt";
+  const input = document.createElement("input");
+  input.type = type;
+  input.name = name;
+  input.value = value;
+  label.append(input, document.createTextNode(labelText));
+  return label;
+}
+
+// 説明ボタンは label の外に置く。label の中に置くとクリックでチェック状態まで変わってしまうため
+function createDetailedChoice(label, description, toggleText) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "choice";
+
+  const head = document.createElement("div");
+  head.className = "choice-head";
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "detail-toggle";
+  toggle.textContent = toggleText;
+  toggle.setAttribute("aria-expanded", "false");
+  head.append(label, toggle);
+
+  const body = document.createElement("div");
+  body.className = "detail-body";
+  body.textContent = description;
+  body.hidden = true;
+
+  toggle.addEventListener("click", () => {
+    const willOpen = body.hidden;
+    body.hidden = !willOpen;
+    toggle.setAttribute("aria-expanded", String(willOpen));
+  });
+
+  wrapper.append(head, body);
+  return wrapper;
+}
+
+function renderChoices(containerId, name, type, options, toggleText = "説明") {
+  const container = document.getElementById(containerId);
+  for (const option of options) {
+    const value = typeof option === "string" ? option : option.id;
+    const labelText = typeof option === "string" ? option : option.label;
+    const label = createChoiceLabel(name, type, value, labelText);
+    const hasDescription = typeof option === "object" && option.description;
+    container.append(hasDescription ? createDetailedChoice(label, option.description, toggleText) : label);
+  }
+}
+
+// option.group があれば、同じ group の選択肢を optgroup にまとめる
+function renderSelect(selectId, options) {
+  const select = document.getElementById(selectId);
+  const groups = new Map();
+  for (const option of options) {
+    if (!option.group) {
+      select.append(new Option(option.label, option.id));
+      continue;
+    }
+    if (!groups.has(option.group)) {
+      const optgroup = document.createElement("optgroup");
+      optgroup.label = option.group;
+      groups.set(option.group, optgroup);
+      select.append(optgroup);
+    }
+    groups.get(option.group).append(new Option(option.label, option.id));
+  }
+}
+
+// 「全部選択／全部外す」ボタンは長いチェックリストにだけ付ける
+function renderBulkButtons() {
+  for (const holder of document.querySelectorAll(".mini-btns[data-group]")) {
+    const groupName = holder.dataset.group;
+    for (const [labelText, shouldCheck] of [["全部選択", true], ["全部外す", false]]) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = labelText;
+      button.addEventListener("click", () => {
+        form.querySelectorAll(`input[name="${groupName}"]:not(:disabled)`).forEach((input) => { input.checked = shouldCheck; });
+        handleChange();
+      });
+      holder.append(button);
+    }
+  }
+}
+
+function buildForm() {
+  renderSelect("jobPreset", JOB_PRESETS);
+  renderSelect("rolePreset", ROLE_PRESETS);
+  renderChoices("levelOptions", "level", "radio", LEVELS, "例を見る");
+  renderChoices("toolOptions", "tools", "checkbox", TOOLS);
+  renderChoices("investigationOptions", "investigation", "radio", INVESTIGATIONS);
+  renderChoices("trialOptions", "trial", "radio", TRIALS);
+  renderChoices("enforcementOptions", "enforcements", "checkbox", ENFORCEMENTS);
+  renderChoices("designItemOptions", "designItems", "checkbox", DESIGN_ITEMS);
+  renderChoices("fileOptions", "files", "checkbox", FILES);
+  renderChoices("taskFieldOptions", "taskFields", "checkbox", TASK_FIELDS);
+  renderChoices("evidenceOptions", "evidence", "checkbox", EVIDENCE_TYPES);
+  renderChoices("approvalOptions", "approvals", "checkbox", APPROVALS);
+  renderChoices("improvementOptions", "improvements", "checkbox", IMPROVEMENTS);
+  renderChoices("outputSectionOptions", "outputSections", "checkbox", OUTPUT_SECTIONS);
+  renderBulkButtons();
+}
+
+/* ===== フォーム ⇔ 状態 ===== */
+
+// disabled の選択肢は「今は効かない」ので、チェックが残っていても選択扱いにしない
+function readCheckedValues(name) {
+  return [...form.querySelectorAll(`input[name="${name}"]:checked:not(:disabled)`)].map((input) => input.value);
+}
+
+function readState() {
+  const state = {};
+  for (const name of TEXT_FIELDS) state[name] = form[name].value;
+  for (const name of MULTI_VALUE_GROUPS) state[name] = readCheckedValues(name);
+  for (const name of SINGLE_VALUE_GROUPS) {
+    state[name] = form.querySelector(`input[name="${name}"]:checked`)?.value ?? createDefaultState()[name];
+  }
+  state.stopEachPhase = form.stopEachPhase.checked;
+  return state;
+}
+
+function applyState(state) {
+  for (const name of TEXT_FIELDS) form[name].value = state[name];
+  for (const name of MULTI_VALUE_GROUPS) {
+    const selected = new Set(state[name]);
+    form.querySelectorAll(`input[name="${name}"]`).forEach((input) => { input.checked = selected.has(input.value); });
+  }
+  for (const name of SINGLE_VALUE_GROUPS) {
+    form.querySelectorAll(`input[name="${name}"]`).forEach((input) => { input.checked = input.value === state[name]; });
+  }
+  form.stopEachPhase.checked = state.stopEachPhase;
+}
+
+// Codex を選んだときだけ意味を持つ選択肢を有効化する
+function syncCodexDependentInputs() {
+  const usesCodex = form.querySelector('input[name="tools"][value="codex"]').checked;
+  const dependentInputs = [
+    form.querySelector(`input[name="files"][value="${AGENTS_FILE}"]`),
+    ...ENFORCEMENTS.filter((item) => item.requiresTool === "codex")
+      .map((item) => form.querySelector(`input[name="enforcements"][value="${item.id}"]`)),
+  ];
+  for (const input of dependentInputs) {
+    input.disabled = !usesCodex;
+    input.closest(".choice")?.classList.toggle("is-disabled", !usesCodex);
+  }
+}
+
+/* ===== 保存（ブラウザによっては使えないので失敗しても動くようにする） ===== */
+
+function loadSavedState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    // 選択肢を増やしたときに古い保存データでも欠けた項目が埋まるよう、初期値に重ねる
+    return { ...createDefaultState(), ...JSON.parse(raw) };
+  } catch {
+    return null;
+  }
+}
+
+function saveState(state) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    // 保存できない環境でもプロンプト生成は続けられるので無視する
+  }
+}
+
+/* ===== プロンプト組み立て ===== */
+
+function bulletList(items) {
+  return items.map((item) => `- ${item}`).join("\n");
+}
+
+function numberedList(items) {
+  return items.map((item, index) => `${index + 1}. ${item}`).join("\n");
+}
+
+function findById(list, id) {
+  return list.find((item) => item.id === id) ?? list[0];
+}
+
+function buildToolsSection(state) {
+  const selectedTools = TOOLS.filter((tool) => state.tools.includes(tool.id));
+  if (selectedTools.length === 0) {
+    return "# 使用するツール\n\nツールは指定しません。この仕事に最適なものを提案してください。";
+  }
+  const toolLines = selectedTools.map((tool) => `- ${tool.label}：${tool.role}`);
+  const ruleFilePolicy = state.tools.includes("codex")
+    ? "共通ルールは AGENTS.md に置き、CLAUDE.md は先頭の @AGENTS.md で読み込んで、Claude 専用のルールだけを追加してください。どちらのツールでも同じルールが適用されるようにしてください。"
+    : "Codex は使いません。共通ルールは CLAUDE.md に直接書き、AGENTS.md は作らないでください。";
+  return `# 使用するツール\n\n${toolLines.join("\n")}\n\n${ruleFilePolicy}`;
+}
+
+function buildProjectSection(state) {
+  const facts = [
+    ["ビルド・テスト・lintのコマンド", state.projCommands],
+    ["AIに触らせたくない場所", state.projNoTouch],
+    ["過去にAIが起こした失敗", state.projFailures],
+  ].filter(([, value]) => value.trim());
+  if (facts.length === 0) return "";
+  const body = facts.map(([title, value]) => `## ${title}\n\n${value.trim()}`).join("\n\n");
+  return `# プロジェクト情報\n\n以下は確定している事実です。ハーネスに必ず反映してください。過去の失敗は、再発を仕組みで防ぐ対策を入れてください。\n\n${body}`;
+}
+
+function buildPhasesSection(state) {
+  const investigation = findById(INVESTIGATIONS, state.investigation);
+  const phases = [
+    `## フェーズ0：調査と質問\n\n${investigation.text}`,
+    "## フェーズ1：設計案\n\nフォルダ構成、作成するファイルの一覧、強制の仕組みの方針、タスクの分け方を短くまとめて提示してください。ファイルの中身はまだ書かないでください。",
+    "## フェーズ2：ファイル作成\n\n設計案に沿って、各ファイルを中身まで作成してください。",
+  ];
+  if (state.trial !== "none") {
+    phases.push("## フェーズ3：試運転\n\n下の「試運転」に従って、ハーネスが実際に機能するかを確かめ、問題があれば修正してください。");
+  }
+  const pacing = state.stopEachPhase
+    ? "各フェーズの終わりで必ず止まり、私の確認を待ってから次へ進んでください。"
+    : "各フェーズは続けて進めて構いません。ただし、質問への回答が必要な場合は待ってください。";
+  return `# 進め方\n\n一度に全部を作らず、次のフェーズに分けて進めてください。${pacing}\n\n${phases.join("\n\n")}`;
+}
+
+function buildRolesSection(state) {
+  const preset = findById(ROLE_PRESETS, state.rolePreset);
+  const roleNames = preset.byCount[state.roleCount];
+  const countNote = state.roleCount === "1"
+    ? "役割は分けず、1つのAIが担当します。ただし、作業後に完成条件で自己検品する手順を必ず入れてください。"
+    : `役割は最初から増やしすぎず、${state.roleCount}役にしてください。Claude Code ではサブエージェントとして定義することを検討してください。`;
+  return `# 役割設計
+
+${countNote}
+
+${bulletList(roleNames)}
+
+それぞれについて、次を明記してください。
+
+- 何を担当するか
+- 何を担当しないか
+- 最初に読む資料
+- 使用できる道具
+- 返す成果物
+- 完了条件`;
+}
+
+// 選択された仕組みや改善方法が必要とするファイルを、作成ファイルに自動で加える
+function collectFiles(state) {
+  const files = [...state.files];
+  const addFile = (file) => { if (!files.includes(file)) files.push(file); };
+  ENFORCEMENTS.filter((item) => state.enforcements.includes(item.id))
+    .forEach((item) => item.files.forEach(addFile));
+  if (state.trial !== "none") addFile(TRIAL_FILE);
+  if (state.improvements.includes("lessons")) addFile(LESSONS_FILE);
+  return files;
+}
+
+function buildFilesSection(state) {
+  const files = collectFiles(state);
+  if (files.length === 0) return "";
+  const notes = [];
+  if (files.includes(AGENTS_FILE)) {
+    notes.push("AGENTS.mdは百科事典にせず、必要な資料へ案内する地図として作ってください。");
+  }
+  if (files.includes("CLAUDE.md")) {
+    notes.push("CLAUDE.mdは200行未満にし、毎回守るべきことだけを書いてください。手順はスキルへ、詳細は docs/ へ分けてください。");
+  }
+  const noteText = notes.length > 0 ? `\n\n${notes.join("\n\n")}` : "";
+  return `# ファイル設計
+
+次のファイルが必要か判断し、必要なものは中身まで作ってください。
+
+${bulletList(files)}${noteText}`;
+}
+
+function buildTaskSection(state) {
+  if (!state.files.includes("tasks.json") || state.taskFields.length === 0) return "";
+  return `# タスク管理
+
+tasks.jsonには次の項目を入れてください。
+
+${bulletList(state.taskFields)}
+
+AIが勝手にタスクを削除したり、完成条件を書き換えたりしないルールも作ってください。`;
+}
+
+function buildEvidenceSection(state) {
+  const evidenceText = state.evidence.length > 0
+    ? `必ず、${state.evidence.join("、")}など、仕事に合った証拠で判定してください。`
+    : "必ず、仕事に合った証拠で判定してください。";
+  return `# 検品
+
+AI自身の「完成しました」という発言を合格理由にしてはいけません。
+
+${evidenceText}
+
+テストを書き換えたり、検証を省略したりして合格にすることを禁止してください。`;
+}
+
+function buildEnforcementSection(state) {
+  const selected = ENFORCEMENTS.filter((item) => state.enforcements.includes(item.id));
+  if (selected.length === 0) return "";
+  return `# 強制の仕組み
+
+Markdownに書いたルールは、AIが読み落とせば破られます。
+絶対に守らせたいことは、次の仕組みで強制してください。Markdownには、判断が必要なことだけを書いてください。
+
+${bulletList(selected.map((item) => item.text))}
+
+どのルールを仕組みで強制し、どのルールを文章で守らせるかの対応表も作ってください。
+hookやスクリプトは、そのまま動く完成版を書き、動作確認の方法も添えてください。`;
+}
+
+function buildSafetySection(state) {
+  const usesPermissions = state.enforcements.includes("permissions");
+  const approvalText = state.approvals.length > 0
+    ? `以下は、必ず人間の承認を必要とします。${usesPermissions ? "permissions の ask または deny にも反映してください。" : ""}\n\n${bulletList(state.approvals)}\n\n`
+    : "";
+  const levelIndex = Number(state.autoLevelMax);
+  return `# 安全ルール
+
+${approvalText}AIに許す自動化の上限は次の通りです。これを超える操作は設計に含めないでください。
+
+${AUTO_LEVELS[levelIndex]}
+
+APIキー、パスワード、秘密情報を指示ファイルへ直接書かないでください。`;
+}
+
+function buildImprovementSection(state) {
+  const selected = IMPROVEMENTS.filter((item) => state.improvements.includes(item.id));
+  if (selected.length === 0) return "";
+  return `# 改善の蓄積
+
+${selected.map((item) => item.text).join("\n\n")}`;
+}
+
+function buildTrialSection(state) {
+  if (state.trial === "none") return "";
+  const base = `ファイル作成後、この仕事の代表的なタスクを1〜2個選び、ハーネスを使って実際に実行してください。
+結果を ${TRIAL_FILE} に記録し、次を報告したうえでハーネスを修正してください。
+
+- 守られなかったルール
+- 発動しなかった、または誤って発動した強制の仕組み
+- 不足していた資料や情報
+- 修正した内容`;
+  const comparison = state.trial === "compare"
+    ? `
+
+同じタスクを、ハーネスなし（CLAUDE.md や docs/ を読ませない状態）でも実行し、成果物の質、検品結果、やり直しの回数を比べてください。
+差が出なかったルールは、効いていないか不要な可能性があるものとして報告してください。`
+    : "";
+  return `# 試運転\n\n${base}${comparison}`;
+}
+
+function buildOutputSection(state) {
+  if (state.outputSections.length === 0) return "";
+  // 選ばれた項目だけに A, B, C... を振り直す
+  const lines = state.outputSections.map((section, index) => `${String.fromCharCode(65 + index)}. ${section}`);
+  return `# 最終的な出力に含めるもの\n\nフェーズ2までに、次の内容をこの順番で揃えてください。\n\n${lines.join("\n")}`;
+}
+
+function buildPrompt(state) {
+  const level = findById(LEVELS, state.level);
+  const jobText = state.job.trim() || "（ここにAIへ任せたい仕事を書く）";
+  const extraRules = state.extraRules.trim();
+
+  const sections = [
+    "あなたは、Claude Code を中心に、AIに仕事を安定して任せるための「ハーネス設計者」です。",
+    level.text,
+    `# 仕事\n\n${jobText}`,
+    buildProjectSection(state),
+    buildToolsSection(state),
+    "# 目的\n\n一発だけ使うプロンプトではなく、何度も再利用でき、途中で会話が切れても、別のセッションや別のメンバーに引き継いでも仕事を続けられる仕組みを作ってください。",
+    buildPhasesSection(state),
+    state.designItems.length > 0 ? `# 必ず設計するもの\n\n${numberedList(state.designItems)}` : "",
+    buildRolesSection(state),
+    buildFilesSection(state),
+    buildTaskSection(state),
+    buildEvidenceSection(state),
+    buildEnforcementSection(state),
+    buildSafetySection(state),
+    buildImprovementSection(state),
+    buildTrialSection(state),
+    extraRules ? `# 追加の条件\n\n${extraRules}` : "",
+    buildOutputSection(state),
+    "事実がわからない点を勝手に作らないでください。\n\nまずフェーズ0から始めてください。",
+  ];
+  return sections.filter(Boolean).join("\n\n");
+}
+
+/* ===== 画面更新 ===== */
+
+const output = document.getElementById("output");
+const charCount = document.getElementById("charCount");
+const autoLevelDesc = document.getElementById("autoLevelDesc");
+const toast = document.getElementById("toast");
+
+function showToast(message) {
+  toast.textContent = message;
+  setTimeout(() => { toast.textContent = ""; }, 2000);
+}
+
+function handleChange() {
+  syncCodexDependentInputs();
+  const state = readState();
+  const prompt = buildPrompt(state);
+  output.textContent = prompt;
+  charCount.textContent = `${prompt.length.toLocaleString()} 文字`;
+  autoLevelDesc.textContent = AUTO_LEVELS[Number(state.autoLevelMax)];
+  // disabled で読み飛ばした項目も保存には残し、Codex を選び直したときに復元できるようにする
+  saveState({ ...state, files: readAllChecked("files"), enforcements: readAllChecked("enforcements") });
+}
+
+function readAllChecked(name) {
+  return [...form.querySelectorAll(`input[name="${name}"]:checked`)].map((input) => input.value);
+}
+
+function handlePresetChange() {
+  const preset = findById(JOB_PRESETS, form.jobPreset.value);
+  // 自由入力を選んだときは、書きかけの内容を消さない
+  if (preset.id !== "custom") form.job.value = preset.text;
+  handleChange();
+}
+
+async function copyPrompt() {
+  try {
+    await navigator.clipboard.writeText(output.textContent);
+    showToast("コピーしました");
+  } catch {
+    // file:// で開いた場合などクリップボードAPIが使えないときは選択状態にして手動コピーを促す
+    const range = document.createRange();
+    range.selectNodeContents(output);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    showToast("自動コピーできませんでした。選択済みなので Ctrl+C / ⌘+C でコピーしてください");
+  }
+}
+
+function downloadPrompt() {
+  const blob = new Blob([output.textContent], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "harness-prompt.md";
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function resetToDefault() {
+  applyState(createDefaultState());
+  handleChange();
+  showToast("初期設定に戻しました");
+}
+
+/* ===== 起動 ===== */
+
+buildForm();
+applyState(loadSavedState() ?? createDefaultState());
+handleChange();
+
+form.addEventListener("input", handleChange);
+form.addEventListener("submit", (event) => event.preventDefault());
+form.jobPreset.addEventListener("change", handlePresetChange);
+document.getElementById("copyBtn").addEventListener("click", copyPrompt);
+document.getElementById("downloadBtn").addEventListener("click", downloadPrompt);
+document.getElementById("resetBtn").addEventListener("click", resetToDefault);
+</script>
+</body>
+</html>
