@@ -246,12 +246,19 @@
     </fieldset>
 
     <fieldset>
-      <legend>11. 検品で認める証拠</legend>
+      <legend>11. タスク運用ルール</legend>
+      <p class="hint">ハーネスができたあと、日々のタスクをどう回すかのルールです。数十件以上のタスクを任せるときに効いてきます。</p>
+      <div class="mini-btns" data-group="taskOps"></div>
+      <div class="options detailed" id="taskOpOptions"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>12. 検品で認める証拠</legend>
       <div class="options" id="evidenceOptions"></div>
     </fieldset>
 
     <fieldset>
-      <legend>12. 安全設計</legend>
+      <legend>13. 安全設計</legend>
       <p class="hint">人間の承認を必須にする操作</p>
       <div class="options" id="approvalOptions"></div>
       <p class="hint" style="margin-top:12px">AIに許す自動化レベルの上限</p>
@@ -260,18 +267,18 @@
     </fieldset>
 
     <fieldset>
-      <legend>13. 改善の蓄積方法</legend>
+      <legend>14. 改善の蓄積方法</legend>
       <div class="options detailed" id="improvementOptions"></div>
     </fieldset>
 
     <fieldset>
-      <legend>14. 出力内容</legend>
+      <legend>15. 出力内容</legend>
       <div class="mini-btns" data-group="outputSections"></div>
       <div class="options column" id="outputSectionOptions"></div>
     </fieldset>
 
     <fieldset>
-      <legend>15. 追加の条件（任意）</legend>
+      <legend>16. 追加の条件（任意）</legend>
       <textarea id="extraRules" name="extraRules" rows="3" placeholder="例：社内用語集は docs/glossary.md を正とする / PRは200行以内に分ける"></textarea>
     </fieldset>
   </form>
@@ -391,9 +398,21 @@ const ENFORCEMENTS = [
   { id: "codex-sandbox", label: "Codex側にも同等の制限をかける（Codex選択時のみ）", requiresTool: "codex", files: [],
     text: "Codex 側は config.toml の sandbox と承認ポリシーで、Claude Code の permissions と同等の制限をかける",
     description: "Codex には Claude Code の hooks や permissions が効きません。\nCodex の設定ファイル（config.toml）で、書き込める範囲と承認が必要な操作を揃えます。" },
+  { id: "wip-check", label: "進行中のタスクを1件に制限する", files: ["scripts/verify.sh"],
+    text: "scripts/verify.sh で、tasks.json の中で作業中の状態（in_progress、状態を細かく分ける場合は investigating と implementing）にあるタスクが2件以上あればエラーにする",
+    description: "「進行中は1件だけ」というルールを、文章ではなく検証スクリプトで強制します。\n複数のタスクを同時にいじって、原因の特定や差し戻しが難しくなるのを防ぎます。" },
+  { id: "tasks-guard", label: "タスクの削除・完了条件の書き換えを検出する", files: ["scripts/verify.sh"],
+    text: "scripts/verify.sh で tasks.json の Git 差分を検査し、タスクの削除、id の変更、完了条件（acceptance）の書き換えがあればエラーにする（人間が意図して変更した場合だけ通す手順も用意する）",
+    description: "AIがテストを通すために完了条件を緩めたり、都合の悪いタスクを消したりするのを検出します。\n「勝手に書き換えない」というルールを、文章だけでなく差分チェックで守らせます。" },
+  { id: "commit-msg", label: "コミットにタスクIDを必須にする（commit-msg hook）", files: [".githooks/commit-msg"],
+    text: "Git の commit-msg hook（.githooks/commit-msg、git config core.hooksPath .githooks で有効化）で、コミットメッセージに tasks.json の id 形式のタスクIDが含まれていなければコミットを拒否する",
+    description: "コミットメッセージにタスクID（例：fix(DEV-002): ...）がないとコミットできないようにします。\nどのコミットがどのタスクの作業か、後から必ず追えるようになります。" },
 ];
 // codex-sandbox は Codex 未選択の間は無効化されるので、初期値に入れておいても出力には影響しない
-const DEFAULT_ENFORCEMENTS = ["permissions", "pre-hook", "post-hook", "stop-hook", "verify-script", "codex-sandbox"];
+const DEFAULT_ENFORCEMENTS = [
+  "permissions", "pre-hook", "post-hook", "stop-hook", "verify-script", "codex-sandbox",
+  "wip-check", "tasks-guard", "commit-msg",
+];
 
 const ROLE_PRESETS = [
   { id: "building", label: "設計・実装・確認", byCount: { 1: ["実装役（設計・確認を兼任）"],       2: ["実装役", "確認役"], 3: ["設計役", "実装役", "確認役"] } },
@@ -404,7 +423,7 @@ const ROLE_PRESETS = [
 const DESIGN_ITEMS = [
   "最終的な完成品", "対象者", "AIが最初に読むべき資料", "正しい情報源として扱うファイル",
   "作業を小さく分けたタスクリスト", "AIの役割分担", "使用する道具", "完成条件", "検品方法",
-  "強制する仕組み（設定・hooks・スクリプト）",
+  "強制する仕組み（設定・hooks・スクリプト）", "作業を止めて報告する条件（停止条件）",
   "途中経過の保存方法", "セッションが切れた場合の引き継ぎ方法", "失敗時の戻し方",
   "人間の承認が必要な操作", "絶対に行ってはいけない操作", "改善を蓄積する方法",
 ];
@@ -451,7 +470,9 @@ const TASK_FIELDS = [
   { id: "task", label: "task",
     description: "やることを1文で書きます（例：「ログインAPIの単体テストを書く」）。\n1回の作業セッションで終わる大きさに分けるのがコツです。" },
   { id: "status", label: "status",
-    description: "今の状態です。\n例：todo（未着手）／in_progress（作業中）／done（完了）／blocked（何かに止められている）" },
+    description: "今の状態です。\n基本：todo（未着手）／in_progress（作業中）／done（完了）／blocked（何かに止められている）\n「状態を細かく分ける」を選ぶと、ローカル検証済み・実環境検証待ち・中止なども区別します（タスク運用ルールを参照）。" },
+  { id: "acceptance", label: "acceptance",
+    description: "そのタスクの完了条件です。第三者が Yes / No で判定できる形で書きます。\n悪い例：「適切に動作すること」\n良い例：「同じ外部IDで再送しても投稿が増えない」「既存テストを含む関連テストがすべて成功する」" },
   { id: "passes", label: "passes",
     description: "完成条件を満たしたかどうか（true / false）です。\nAIの自己申告ではなく、evidence の証拠（できれば検証スクリプトの結果）で判定した結果を入れます。" },
   { id: "evidence", label: "evidence",
@@ -466,11 +487,110 @@ const TASK_FIELDS = [
     description: "優先度です（例：high / medium / low）。\nタスクが多いときに、AIがどれから手を付けるべきか判断する材料になります。" },
   { id: "files", label: "files",
     description: "そのタスクで変更・作成するファイルの一覧です。\n複数のAIや人が同じファイルを同時に書き換える衝突を防ぐのに役立ちます。" },
+  { id: "reason", label: "reason",
+    description: "保留・中止にした理由です（例：「API仕様の回答待ち」「要件変更により対象外」）。\nタスクを削除せずに残すことで、なぜやらなかったのかを後から追えます。" },
 ];
-const DEFAULT_TASK_FIELDS = ["id", "task", "status", "passes", "evidence", "dependencies"];
+const DEFAULT_TASK_FIELDS = ["id", "task", "status", "acceptance", "passes", "evidence", "dependencies", "reason"];
 
-const EVIDENCE_TYPES = ["成果物", "テスト結果", "検証スクリプトの結果", "出典", "スクリーンショット", "ログ", "Gitの差分"];
-const DEFAULT_EVIDENCE = ["成果物", "テスト結果", "検証スクリプトの結果", "ログ", "Gitの差分"];
+const TASKS_FILE = "tasks.json";
+const TASKS_FILE_ENFORCEMENTS = ["wip-check", "tasks-guard"];
+
+// status を細かく分けるときの値の一覧。プロンプトにそのまま出力する
+const FINE_STATUSES = [
+  "todo（未着手）",
+  "investigating（調査中）",
+  "implementing（実装中）",
+  "verified_local（ローカル検証済み）",
+  "awaiting_env_check（実環境検証待ち）",
+  "done（完了：完了条件と必要な検証をすべて満たした）",
+  "on_hold（保留：外部の回答や権限を待っている。reason 必須）",
+  "cancelled（中止・対象外。削除せず残す。reason 必須）",
+];
+
+// files は、そのルールを選んだときに自動で作成ファイルへ追加されるもの
+const TASK_OPS = [
+  { id: "stop-conditions", label: "停止条件を決める", files: [],
+    text: `## 停止条件
+
+次のいずれかを検出したら、変更を加えずに作業を止め、「停止理由」「確認済みの事項」「人間の判断が必要な点」を報告するルールにしてください。止まることは失敗ではなく、安全な成果として扱ってください。
+
+- 仕様書どうし、または仕様書とコードの内容が食い違っている
+- データの削除、DBマイグレーション、本番環境に影響する変更が必要になった
+- 権限が足りない、または認証情報が必要になった
+- 作業開始時に、自分が作っていない未コミットの変更がある
+- 完了条件を満たすには、変更範囲の外を変える必要がある`,
+    description: "何が起きたら手を止めて人間に報告するかを決めます。\n例：仕様の矛盾、データ削除やマイグレーションの影響、権限不足、手元に見覚えのない変更がある。\n「わからないので止まった」を失敗ではなく安全な成果として扱うのがポイントです。" },
+  { id: "wip-one", label: "進行中のタスクは1件だけにする", files: [],
+    text: `## 進行中のタスクは1件
+
+同時に作業中にしてよいタスクは原則1件にしてください。並列化する場合は、書き込むファイルが重ならない独立したタスクに限り、ブランチまたは git worktree を分けるルールにしてください。`,
+    description: "複数のタスクを同時に進めると、どの変更がどのタスクのものか分からなくなり、差し戻しも難しくなります。\n並列化するのは、触るファイルが重ならないタスクだけにします。" },
+  { id: "triage", label: "作業中に見つけた問題を振り分ける", files: [],
+    text: `## 作業中に見つけた問題の扱い
+
+作業中に新しい問題を見つけたら、次の3つに分類させてください。今のタスクに混ぜて直すことは禁止してください。
+
+1. 今のタスクの完了条件を満たすのに必須 → 今のタスク内で対応する
+2. 関連はあるが別件 → tasks.json に新しいタスクとして登録する
+3. 無関係な既存の問題 → tasks.json に新しいタスクとして登録する`,
+    description: "AIは気づいた問題を「ついでに」直しがちで、1つのタスクが際限なく膨らみます。\n今のタスクに必須なものだけを扱い、それ以外は新しいタスクとして登録させます。" },
+  { id: "fine-status", label: "状態を細かく分ける（実装済みと完了を区別）", files: [],
+    text: "", // buildTaskOpsSection で FINE_STATUSES から組み立てる
+    description: "「実装した」と「完了した」を区別します。\n特に、検証スクリプトでは確認できない実環境での確認が残っている場合は、done ではなく「実環境検証待ち」にします。\nIDは再利用せず、やめたタスクは削除せずに「中止」として理由と一緒に残します。" },
+  { id: "plan-first", label: "大きなタスクは計画と実装を分ける", files: [],
+    text: `## 計画と実装を分ける
+
+変更範囲が広いタスクは、まず調査と計画だけを行い、次を報告して承認を待つルールにしてください。計画が大きすぎる場合は、タスクを分割して tasks.json に登録させてください。
+
+- 参照した仕様
+- 変更予定のファイル
+- 影響範囲
+- テスト計画
+- 不明点
+- 問題が起きたときの戻し方`,
+    description: "広い範囲を変えるタスクでは、いきなりコードを書かせず、先に計画を出させて人間が確認します。\nClaude Code の Plan Mode と組み合わせると使いやすいです。" },
+  { id: "commit-unit", label: "1タスクを1コミットの単位で閉じる", files: [],
+    text: `## 1タスクの閉じ方
+
+1つのタスクは「仕様確認 → 実装 → テスト → 差分レビュー → ドキュメント更新 → コミット →（必要なら）Draft PR → 報告」で閉じるルールにしてください。コードだけを先に大量に書き進めることは禁止してください。
+ブランチ名とコミットメッセージにはタスクIDを入れてください（例：ブランチ feature/DEV-002-idempotency、コミット fix(DEV-002): prevent duplicate draft creation）。`,
+    description: "実装・テスト・ドキュメント・コミットを1タスクでまとめて終わらせます。\nブランチ名とコミットにタスクIDを入れるので、どの変更がどのタスクのものか後から追えます。" },
+  { id: "report-format", label: "完了報告の形式を決める", files: [],
+    text: `## 完了報告の形式
+
+「実装しました。問題なく動作しています」のような報告は禁止し、次の項目を必ず含めるルールにしてください。
+
+- タスクID と、変更後の status
+- 変更したファイル
+- 実行したコマンドと、テストの件数・結果
+- 作業開始時と終了時の git status
+- コミットSHA（PRを作った場合はURL）
+- まだ確認していない項目と、その理由`,
+    description: "AIの完了報告を、感想ではなく証拠の一覧にします。\n変更ファイル、実行したコマンド、テスト結果、コミットSHA、未確認の項目などを必ず書かせます。" },
+  { id: "task-template", label: "タスク指示のテンプレートを作る", files: ["docs/task-template.md"],
+    text: `## タスク指示のテンプレート
+
+docs/task-template.md に、1つのタスクをAIへ依頼するときのテンプレートを作ってください。項目は次の6つです。繰り返し使うので、Claude Code のスキル（例：/task-start DEV-003 でタスクIDを渡すと、tasks.json から内容を読み込んで指示を組み立てる）にすることも検討してください。
+
+1. 目的（何を、だけでなく、なぜ）
+2. 変更範囲（調査・変更してよいファイルや機能）
+3. 禁止事項（例：テストを通すために期待値を実装に合わせない、根拠なく仕様を補わない）
+4. 完了条件（第三者が Yes / No で判定できる形）
+5. テスト方法（単体・結合・回帰・実環境のどれで確認するか）
+6. 停止条件`,
+    description: "AIにタスクを1件依頼するときの、毎回の指示の型です。\n目的・変更範囲・禁止事項・完了条件・テスト方法・停止条件の6項目を埋めるだけで、指示の抜け漏れがなくなります。スキルにすれば /task-start DEV-003 のように呼び出せます。" },
+  { id: "md-view", label: "tasks.json から人間向けの一覧表を生成する", files: ["scripts/render-tasks.sh"],
+    text: `## 人間向けの一覧表
+
+tasks.json を正本としたまま、人間がレビューしやすい Markdown の表（docs/task-list.md）を生成するスクリプト scripts/render-tasks.sh を作ってください。生成された表は手で編集しないルールにしてください。`,
+    description: "正本は機械的に検査しやすい tasks.json のまま、人間が読みやすい Markdown の表を自動生成します。\n表は生成物なので、手で書き換えないルールにします。" },
+];
+const DEFAULT_TASK_OPS = [
+  "stop-conditions", "wip-one", "triage", "fine-status", "plan-first", "commit-unit", "report-format", "task-template",
+];
+
+const EVIDENCE_TYPES = ["成果物", "テスト結果", "検証スクリプトの結果", "出典", "スクリーンショット", "ログ", "Gitの差分", "コミットSHA・PR"];
+const DEFAULT_EVIDENCE = ["成果物", "テスト結果", "検証スクリプトの結果", "ログ", "Gitの差分", "コミットSHA・PR"];
 
 const APPROVALS = [
   "メールやDMの送信", "SNSへの投稿", "購入や決済", "データの削除", "本番環境への反映",
@@ -515,7 +635,8 @@ const DEFAULT_IMPROVEMENTS = ["human-rules", "prune"];
 const OUTPUT_SECTIONS = [
   "この仕事でハーネスが必要な理由", "ツールの使い分け", "全体の作業フロー", "フォルダ構成",
   "各ファイルの完成版", "強制の仕組み（設定・hooks・スクリプト）と、文章で守らせるルールの対応表",
-  "役割ごとの設計", "検品方法", "安全設計", "最初に実行する1つ目のタスク", "使い方の説明",
+  "役割ごとの設計", "タスク運用ルールと、タスク指示のテンプレート", "検品方法", "安全設計",
+  "最初に実行する1つ目のタスク", "使い方の説明",
 ];
 
 const STORAGE_KEY = "harness-prompt-builder:v2";
@@ -544,13 +665,14 @@ function createDefaultState() {
     approvals: [...DEFAULT_APPROVALS],
     autoLevelMax: "2",
     improvements: [...DEFAULT_IMPROVEMENTS],
+    taskOps: [...DEFAULT_TASK_OPS],
     outputSections: [...OUTPUT_SECTIONS],
     extraRules: "",
   };
 }
 
 const MULTI_VALUE_GROUPS = [
-  "tools", "enforcements", "designItems", "files", "taskFields", "evidence", "approvals", "improvements", "outputSections",
+  "tools", "enforcements", "designItems", "files", "taskFields", "taskOps", "evidence", "approvals", "improvements", "outputSections",
 ];
 const SINGLE_VALUE_GROUPS = ["level", "investigation", "trial"];
 const TEXT_FIELDS = ["jobPreset", "job", "projCommands", "projNoTouch", "projFailures", "roleCount", "rolePreset", "autoLevelMax", "extraRules"];
@@ -657,6 +779,7 @@ function buildForm() {
   renderChoices("designItemOptions", "designItems", "checkbox", DESIGN_ITEMS);
   renderChoices("fileOptions", "files", "checkbox", FILES);
   renderChoices("taskFieldOptions", "taskFields", "checkbox", TASK_FIELDS);
+  renderChoices("taskOpOptions", "taskOps", "checkbox", TASK_OPS);
   renderChoices("evidenceOptions", "evidence", "checkbox", EVIDENCE_TYPES);
   renderChoices("approvalOptions", "approvals", "checkbox", APPROVALS);
   renderChoices("improvementOptions", "improvements", "checkbox", IMPROVEMENTS);
@@ -810,6 +933,12 @@ function collectFiles(state) {
   const addFile = (file) => { if (!files.includes(file)) files.push(file); };
   ENFORCEMENTS.filter((item) => state.enforcements.includes(item.id))
     .forEach((item) => item.files.forEach(addFile));
+  // タスク運用ルールや tasks.json を検査する仕組みは、tasks.json がないと成り立たない
+  const needsTasksFile = state.taskOps.length > 0
+    || state.enforcements.some((id) => TASKS_FILE_ENFORCEMENTS.includes(id));
+  if (needsTasksFile) addFile(TASKS_FILE);
+  TASK_OPS.filter((item) => state.taskOps.includes(item.id))
+    .forEach((item) => item.files.forEach(addFile));
   if (state.trial !== "none") addFile(TRIAL_FILE);
   if (state.improvements.includes("lessons")) addFile(LESSONS_FILE);
   return files;
@@ -834,14 +963,36 @@ ${bulletList(files)}${noteText}`;
 }
 
 function buildTaskSection(state) {
-  if (!state.files.includes("tasks.json") || state.taskFields.length === 0) return "";
+  if (!collectFiles(state).includes(TASKS_FILE) || state.taskFields.length === 0) return "";
+  const statusRule = state.taskOps.includes("fine-status")
+    ? `
+
+status は次の値に限定してください。
+
+${bulletList(FINE_STATUSES)}
+
+実環境でしか確認できない項目が残っている場合は、done にせず awaiting_env_check にしてください。
+タスクの id は再利用せず、やめたタスクは削除せずに cancelled にして reason を残してください。`
+    : "";
   return `# タスク管理
+
+tasks.json を進捗の唯一の正本にしてください。チャットやAIの完了報告と食い違った場合は、tasks.json の記載を正とします。
 
 tasks.jsonには次の項目を入れてください。
 
-${bulletList(state.taskFields)}
+${bulletList(state.taskFields)}${statusRule}
 
-AIが勝手にタスクを削除したり、完成条件を書き換えたりしないルールも作ってください。`;
+AIが勝手にタスクを削除したり、完了条件を書き換えたりしないルールも作ってください。`;
+}
+
+function buildTaskOpsSection(state) {
+  const selected = TASK_OPS.filter((item) => state.taskOps.includes(item.id) && item.text);
+  if (selected.length === 0) return "";
+  return `# タスク運用ルール
+
+ハーネスができたあと、日々のタスクを回すときのルールです。CLAUDE.md（またはスキル）に入れ、強制できるものは強制の仕組みでも縛ってください。
+
+${selected.map((item) => item.text).join("\n\n")}`;
 }
 
 function buildEvidenceSection(state) {
@@ -936,6 +1087,7 @@ function buildPrompt(state) {
     buildRolesSection(state),
     buildFilesSection(state),
     buildTaskSection(state),
+    buildTaskOpsSection(state),
     buildEvidenceSection(state),
     buildEnforcementSection(state),
     buildSafetySection(state),
